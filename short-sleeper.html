@@ -26,14 +26,15 @@ const CONFIG = {
   //   attackMin/Max : 眠気発作の間隔（秒、ランダム幅）
   //   riseSpeed     : 発作中の眠気上昇速度（/秒）
   //   grace         : 限界ゾーンの猶予（秒）
+  //   awakeScale    : 刺激の効果時間（起きていられる秒数）の倍率。後半ほど短く
   days: [
-    { attackMin: 4,   attackMax: 7,   riseSpeed: 20, grace: 1.8 },
-    { attackMin: 3.5, attackMax: 6.5, riseSpeed: 23, grace: 1.6 },
-    { attackMin: 3,   attackMax: 6,   riseSpeed: 26, grace: 1.45 },
-    { attackMin: 3,   attackMax: 6,   riseSpeed: 29, grace: 1.3 },
-    { attackMin: 2.5, attackMax: 5.5, riseSpeed: 33, grace: 1.15 },
-    { attackMin: 2,   attackMax: 5,   riseSpeed: 37, grace: 1.0 },
-    { attackMin: 1.5, attackMax: 4.5, riseSpeed: 42, grace: 0.85 },
+    { attackMin: 4,   attackMax: 7,   riseSpeed: 20, grace: 1.8, awakeScale: 1.0 },
+    { attackMin: 3.5, attackMax: 6.5, riseSpeed: 23, grace: 1.6, awakeScale: 0.85 },
+    { attackMin: 3,   attackMax: 6,   riseSpeed: 26, grace: 1.45, awakeScale: 0.72 },
+    { attackMin: 3,   attackMax: 6,   riseSpeed: 29, grace: 1.3, awakeScale: 0.6 },
+    { attackMin: 2.5, attackMax: 5.5, riseSpeed: 33, grace: 1.15, awakeScale: 0.5 },
+    { attackMin: 2,   attackMax: 5,   riseSpeed: 37, grace: 1.0, awakeScale: 0.42 },
+    { attackMin: 1.5, attackMax: 4.5, riseSpeed: 42, grace: 0.85, awakeScale: 0.35 },
   ],
 
   // 4-6 1日の中での難易度上昇（0秒時点 ×1.0 → 60秒時点 ×endFactor へ直線的に変化）
@@ -1033,7 +1034,7 @@ const S = {
 
 function dayParams() {
   const d = CONFIG.days[S.day - 1], k = CONFIG.difficulty || 1;
-  return { attackMin: d.attackMin / k, attackMax: d.attackMax / k, riseSpeed: d.riseSpeed * k, grace: d.grace / k };
+  return { attackMin: d.attackMin / k, attackMax: d.attackMax / k, riseSpeed: d.riseSpeed * k, grace: d.grace / k, awakeScale: (d.awakeScale ?? 1) / k };
 }
 const look = () => CONFIG.looks[S.day - 1] || {};
 function scheduleLeave() { const lv = look().leave; S.leaveTimer = lv ? rand(lv.intervalMin, lv.intervalMax) : Infinity; }
@@ -1237,7 +1238,7 @@ function useStimulus(id) {
 
 function applyAwake(st) {
   const success = S.phase === 'limit';
-  let dur = rand(st.awakeMin, st.awakeMax);
+  let dur = rand(st.awakeMin, st.awakeMax) * dayParams().awakeScale;
   if (success) {
     S.sleepy = 0;
     flash(); Sound.play('success');
