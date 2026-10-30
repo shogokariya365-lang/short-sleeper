@@ -123,7 +123,9 @@ const CONFIG = {
       partnerLines: ['睡眠は鍛えられない！医学的に無理！', '30分睡眠なんてありえないね', '君、それ寝てるよ', '医者の言うことを聞きなさい'],
       horiLines: ['なんで断言できる？', 'あの、ナメてます？', '普通に喋ってもらっていいですか？', 'お前がな！'],
       lineInterval: 2.2, rageBanner: '🔥 たこす先生ブチギレ！懸垂で勝負だ！！', rageLine: 'もう怒った！懸垂で勝負だ！！',
-      contest: { duration: 8, rivalRate: 4.6, winMood: 30, winAwake: 8, loseSleepy: 40, loseMood: -20 },
+      // 勝ち：機嫌アップ＋その日はずっと上半身裸 / 負け：機嫌ダウン＋その日は悪口スパチャ loseInsultLimit 回で配信終了
+      contest: { duration: 8, rivalRate: 4.6, winMood: 30, loseMood: -45, loseInsultLimit: 2,
+        winBanner: '💪 懸垂勝負に勝利！機嫌最高・今日はずっと上半身裸', loseBanner: '😡 懸垂勝負に負けて機嫌最悪…今日は悪口スパチャ2回で配信終了！' },
       winLine: 'くっ…筋肉だけは認める…', loseLine: 'ほら見なさい、睡眠不足だ', winHori: '誰かができてるってことは、僕もできるんじゃないか',
       endComment: '── たこす先生との論争 終了 ──' },
     { id: 'massage', kind: 'massage', day: 2, at: [12, 34], duration: 18, riseMult: 3, attackMult: 0.3, firstAttack: [0.3, 2.0],
@@ -277,6 +279,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 #guest svg{display:none;width:100%;height:100%}
 #guest[data-kind=tora] .g-tora,#guest[data-kind=critic] .g-critic,#guest[data-kind=takosu] .g-takosu,#guest[data-kind=shimipeni] .g-shimipeni{display:block}
 #guest .tk-up,#guest .tk-rage{display:none}
+.hori .bare{display:none}.hori.shirtless .bare{display:inline}.hori.shirtless .tank{display:none}
 #guest.pull .tk-up,#guest.angry .tk-rage{display:inline}
 #guest.pull .tk-down{display:none}
 #guest.angry .tk-face{fill:#ff9a86}
@@ -874,6 +877,7 @@ const C = {
   banSafe: ['ナイススタンプw', 'パオーン', '象さんGJ', 'セーフwww'],
   away:    ['どこ行った？', 'おーい', '無人配信で草', '帰ってこーい', '声だけ聞こえる'],
   takosu:  ['たこす先生きた', '論争はじまったw', '医者vs堀', 'どっちも引かないw', '空気やばい'],
+  shirtless: ['脱いだwww', '上半身裸配信', '筋肉えぐい', '服着てw', 'BANされない？w', '勝者の肉体'],
   takosuRage: ['ブチギレてて草', '懸垂勝負！？', 'なんで懸垂w', '堀いけええ', '筋肉で解決'],
   shimipeni: ['しみぺにきたああ', '水着隠したの草', 'お風呂やめとけw', 'この2人好き', 'しみぺに容赦ないw'],
   tora:    ['虎きたああ', '公開処刑で草', '希望額強気すぎ', 'エビデンスは？', 'ノーマネーの予感', '空気ピリピリ'],
@@ -1120,8 +1124,10 @@ function chibiSVG() {
     <path data-k="chair:egg" d="M34,216 Q100,234 166,216 L164,232 Q100,252 36,232 Z" fill="#f4f1ec" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
     <rect class="sk o" x="90" y="116" width="20" height="16"/>
     <circle class="sk o" cx="62" cy="142" r="16"/><circle class="sk o" cx="138" cy="142" r="16"/>
-    <path d="M70,124 Q100,140 130,124 L138,148 Q134,170 134,196 H66 Q66,170 62,148 Z" fill="url(#${u}tank)" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
-    <path d="M106,152 q3,-4 6,0 q3,4 6,0 q-3,-4 -6,0 q-3,4 -6,0" stroke="#fff" stroke-width="1.6" fill="none"/>
+    <g class="bare"><path class="sk o" d="M70,124 Q100,140 130,124 L138,148 Q134,170 134,196 H66 Q66,170 62,148 Z" stroke-linejoin="round"/>
+      <path d="M74,150 Q87,162 100,150 Q113,162 126,150 M100,156 V190 M88,170 H112 M89,182 H111" fill="none" stroke="#b0703f" stroke-width="2" stroke-linecap="round"/></g>
+    <path class="tank" d="M70,124 Q100,140 130,124 L138,148 Q134,170 134,196 H66 Q66,170 62,148 Z" fill="url(#${u}tank)" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
+    <path class="tank" d="M106,152 q3,-4 6,0 q3,4 6,0 q-3,-4 -6,0 q-3,4 -6,0" stroke="#fff" stroke-width="1.6" fill="none"/>
     <g data-k="arms:down">
       ${limb('M60,144 L50,174 L52,200', 22)}${hand(52, 204)}
       ${limb('M140,144 L150,174 L148,200', 22)}${hand(148, 204)}
@@ -1231,9 +1237,9 @@ function buildHori(container) {
   let cur = '';
   return {
     // trunks: 水着を着ているか / censor: 'steam'（湯気で隠す）・'stamp'（象さんスタンプ） / floatStamp: 湯船にスタンプが浮く
-    set({ expr, day, lid = 0, ban = false, trunks = true, censor = '', floatStamp = false, props: pr = ['', ''] }) {
+    set({ expr, day, lid = 0, ban = false, trunks = true, censor = '', floatStamp = false, shirtless = false, props: pr = ['', ''] }) {
       const kuma = CONFIG.kuma[day - 1] || CONFIG.kuma[0];
-      const key = [expr, day, ban, trunks, censor, floatStamp, pr.join()].join('|');
+      const key = [expr, day, ban, trunks, censor, floatStamp, shirtless, pr.join()].join('|');
       if (key !== cur) {
         cur = key;
         const lk = CONFIG.looks[day - 1] || {};
@@ -1244,7 +1250,7 @@ function buildHori(container) {
         const anger = /^angry(\d)$/.exec(expr);
         el.className = 'hori expr-' + expr.replace(/\d$/, '')
           + (anger ? ' anger' + anger[1] : '') + (ban ? ' ban' : '') + (trunks ? '' : ' naked') + (f.pose === 'bath' ? ' flush look-r' : '')
-          + (kuma.bloodshot ? ' bloodshot' : '') + (kuma.pale ? ' pale' : '') + (kuma.hollow ? ' hollow' : '');
+          + (kuma.bloodshot ? ' bloodshot' : '') + (kuma.pale ? ' pale' : '') + (kuma.hollow ? ' hollow' : '') + (shirtless ? ' shirtless' : '');
         const src = ASSETS.hori[IMG_KEY[expr] || expr];
         if (src) { img.src = src; img.hidden = false; el.classList.add('has-img'); }
         else { img.hidden = true; }
@@ -1366,6 +1372,7 @@ function startDay() {
   S.insultStreak = 0; S.angerLeft = 0; S.angerLevel = 0;
   S.pendingEvent = null; S.ban = null; S.bathEnterLeft = 0; S.bathNaked = false;
   S.special = null; S.contest = null; S.banForce = false;
+  S.shirtless = false; S.insultLimit = CONFIG.insult.limit;
   S.awayLeft = 0; scheduleLeave();
   S.specialQueue = CONFIG.specialEvents.filter(e => e.day === S.day).map(ev => ({ ev, at: rand(ev.at[0], ev.at[1]) }));
   CONFIG.stimuli.forEach(s => { S.uses[s.id] = s.uses; S.cd[s.id] = 0; });
@@ -1526,8 +1533,8 @@ function useStimulus(id) {
     S.insultStreak++;
     showSuperchat(pick(SC_INSULTS));
     Sound.play('insult');
-    if (S.insultStreak >= CONFIG.insult.limit) { S.angerLevel = 3; gameOver('insult'); return; }
-    S.angerLevel = S.insultStreak;           // 1〜3：イラつき度
+    if (S.insultStreak >= S.insultLimit) { S.angerLevel = 3; gameOver('insult'); return; }
+    S.angerLevel = S.insultLimit < CONFIG.insult.limit ? 3 : S.insultStreak; // 1〜3：イラつき度（懸垂に負けた日は1回目から最大）
     S.angerLeft = CONFIG.insult.angerShowTime;
     say(pick(LINES.insult[S.angerLevel - 1]), 2.2, S.angerLevel);
     if (S.angerLevel >= 3) { el.stream.classList.add('shake'); burstComments(C.insult3, 'bad', 3); }
@@ -1729,18 +1736,20 @@ function finishContest() {
   addComment('sys', `── 懸垂勝負 ${c.me} vs ${Math.floor(c.rival)}：${win ? '堀の勝ち！' : '堀の負け…'} ──`);
   if (win) {
     S.mood = clamp(S.mood + cf.winMood, 0, 100);
-    S.sleepy = 0; S.phase = 'awake'; S.awakeStim = 'workout'; S.awakeLeft = cf.winAwake;
-    burstComments(C.success, 'hype', 3); flash(); Sound.play('clear');
+    S.shirtless = true;
+    showBanner(cf.winBanner, 3);
+    burstComments(C.shirtless, 'hype', 4); flash(); Sound.play('clear');
   } else {
     S.mood = clamp(S.mood + cf.loseMood, 0, 100);
-    S.phase = 'rising'; addSleepy(cf.loseSleepy);
-    burstComments(C.sleepy, 'bad', 3); Sound.play('flying');
+    S.insultLimit = cf.loseInsultLimit;
+    showBanner(cf.loseBanner, 3.5);
+    burstComments(C.lowMood, 'bad', 3); Sound.play('over');
   }
   const line = win ? ev.winLine : ev.loseLine;
   el.guestSpeech.innerHTML = `<b>${ev.partner}</b>`; el.guestSpeech.append(line); el.guestSpeech.classList.add('show');
   Voice.speak(line, 1.25);
   const ref = S.special;
-  setTimeout(() => { if (S.special === ref) { ev.endLine = win ? ev.winHori : 'マイクロスリープである'; endSpecial(); } }, 1600);
+  setTimeout(() => { if (S.special === ref) { ev.endLine = win ? ev.winHori : 'あの、ナメてます？'; endSpecial(); } }, 1600);
   S.special.left = 99; // 締めのセリフが終わるまで待つ
 }
 
@@ -2009,7 +2018,7 @@ function render() {
   el.stream.classList.toggle('withGuest', !!gk);
   el.stage.dataset.scene = pose === 'bath' || pose === 'enter' ? 'bath' : pose === 'massage' ? 'massage' : gk === 'tora' ? 'tora' : (lk.room || 'kitchen');
   const props = lk.noZzz ? ex.props.map(x => (x === '💤' ? '' : x)) : ex.props;
-  hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, props });
+  hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, shirtless: S.shirtless, props });
 }
 
 let last = performance.now();
