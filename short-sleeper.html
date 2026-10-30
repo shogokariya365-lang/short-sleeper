@@ -81,15 +81,22 @@ const CONFIG = {
         sc: '最近家の外にクイヤが大量発生し夏だな～と感じます',
         hori: ['あーあー、クイヤか', 'なんかね、穴掘ったりするやつでしたっけ', '千葉とかに住んでた時にそういうのあった気がする'],
         awake: 7, mood: 0, bonus: 200, bonusLabel: '🔥 存在しない動物を知ったかぶり…切り抜かれてバズった！' },
-      { id: 'yupis', weight: 2, banner: '👩‍💼 霞ヶ浦OLユーピスが乱入！', guest: '霞ヶ浦OLユーピス', icon: '👩‍💼', sub: '霞ヶ浦から乱入',
-        lines: ['霞ヶ浦からお邪魔しまーす！', '堀さん、寝たら負けですよ〜！'],
-        hori: ['誰かができてるってことは、僕もできるんじゃないか'], awake: 9, mood: 20 },
-      { id: 'takoyaki', weight: 2, banner: '🐙 たこやきしょうがたこ焼きを差し入れ！', guest: 'たこやきしょう', icon: '🐙', sub: 'たこ焼き差し入れ',
-        lines: ['焼きたてのたこ焼き持ってきましたー！', '熱いうちにどうぞ！'],
-        hori: ['うまっ…おなかいっぱい…'], awake: 3, mood: 10, afterAttack: true },
-      { id: 'milkle', weight: 2, banner: '🥛 朝からみるくるが登場！', guest: '朝からみるくる', icon: '🥛', sub: '朝から元気',
-        lines: ['おはようございまーす！朝ですよー！', '朝から元気いきましょう！'],
-        hori: ['起きた瞬間からすべてに感謝することで、不幸になることはない'], awake: 12, mood: 10 },
+      { id: 'yupis', weight: 2, banner: '👩‍💼 堀の将来の彼女・霞ヶ浦OLユーピスが登場！', guest: '霞ヶ浦OLユーピス', icon: '👩‍💼', sub: '堀の将来の彼女',
+        lines: ['堀さ〜ん、来ちゃった♡'], hori: [], awake: 3, mood: 0,
+        // 確率 goodChance でいいこと、それ以外は悪いことが起きる
+        goodChance: 0.5,
+        good: { banner: '💋 ほっぺにちゅー！調子に乗って10秒間無敵！', invincible: 10, mood: 30,
+          hori: ['誰かができてるってことは、僕もできるんじゃないか'] },
+        bad: { banner: '⚡ ユーピスに急に飛びつかれて…電気が消えた！（10秒間まっくら）', blackout: 10,
+          hori: ['ちょ、電気！電気つけて！'] } },
+      { id: 'takoyaki', weight: 2, banner: '🐙 たこやきしょうがたこ焼きを差し入れ！ 満腹で今日は眠くなるペース1.3倍', guest: 'たこやきしょう', icon: '🐙', sub: 'たこ焼き差し入れ',
+        lines: ['焼きたてのたこ焼き持ってきましたー！'],
+        hori: ['いや今いらないって！…うまっ'], horiAngry: true, awake: 3, mood: -10, riseMult: 1.3 },
+      { id: 'milkle', weight: 2, banner: '🥛 朝からみるくるに「ブレイキングサークル」出場を決められた！', guest: '朝からみるくる', icon: '🥛', sub: 'ブレイキングサークル',
+        lines: ['堀さん、ブレイキングサークル出場決定です！相手はたこす先生！'], hori: [], awake: 3, mood: 0,
+        // 7秒間のバトル。たこす先生のパンチをスワイプ（PCは←→キー）でよける。maxHits 回当たると負け
+        fight: { duration: 7, punchEvery: [0.5, 0.9], telegraph: 0.75, maxHits: 3, winMood: 30, loseMood: -20,
+          winBanner: '🏆 たこす先生に勝利！上着を脱いでご機嫌', loseBanner: '🤕 顔が腫れて包帯ぐるぐる巻き…今日は顔が見えない！' } },
     ],
   },
 
@@ -351,6 +358,30 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 #horiWrap.gone{left:-70%}
 #emptyChair{position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:88%;aspect-ratio:200/250;display:none}
 #emptyChair.show{display:block}
+#blackout{position:absolute;inset:0;background:#05040a;opacity:0;pointer-events:none;transition:opacity .25s;z-index:8}
+#blackout.on{opacity:.93}
+#invBadge{position:absolute;left:50%;top:22%;transform:translateX(-50%);z-index:11;display:none;background:#fde047;color:#3b2200;font-weight:900;
+  border-radius:999px;padding:4px 12px;font-size:clamp(12px,3.4vw,18px);box-shadow:0 0 12px #fde047}
+#invBadge.show{display:block}
+.dodgeL{animation:dodgeL .3s ease-out}.dodgeR{animation:dodgeR .3s ease-out}.hitme{animation:hitme .35s linear}
+@keyframes dodgeL{50%{transform:translateX(-22%)}}@keyframes dodgeR{50%{transform:translateX(22%)}}
+@keyframes hitme{0%,100%{transform:none;filter:none}25%{transform:translateX(-6%);filter:sepia(1) saturate(6) hue-rotate(-30deg)}75%{transform:translateX(6%)}}
+#fightLayer{position:fixed;inset:0;z-index:90;display:none;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;
+  padding:0 16px max(24px,env(safe-area-inset-bottom));background:rgba(200,0,0,.08);touch-action:none}
+#fightLayer.show{display:flex}
+#fightLayer .fTitle{position:absolute;top:10%;left:0;right:0;text-align:center;font-size:clamp(20px,6vw,40px);font-weight:900;color:#fff;
+  text-shadow:0 0 10px #dc2626,0 0 2px #000}
+#fightLayer .fTitle small{display:block;font-size:.55em}
+#fPrompt{position:absolute;top:30%;left:0;right:0;text-align:center;font-size:clamp(30px,10vw,64px);font-weight:900;color:#fde047;
+  text-shadow:0 0 8px #000,0 0 2px #000;opacity:0}
+#fPrompt.show{opacity:1;animation:blink .25s steps(2) infinite}
+#fHp{background:#000b;color:#fff;border-radius:14px;padding:6px 16px;font-size:clamp(16px,4.5vw,22px);font-weight:900}
+.fBtns{display:flex;gap:10px;width:min(92vw,460px)}
+.fBtns button{flex:1;min-height:110px;border:none;border-radius:20px;background:#dc2626;color:#fff;font-size:clamp(20px,6vw,32px);font-weight:900;
+  box-shadow:0 6px 0 #7f1d1d;touch-action:manipulation}
+.fBtns button:active{transform:translateY(3px);box-shadow:0 3px 0 #7f1d1d}
+#fTimer{width:min(92vw,460px);height:12px;background:#0008;border-radius:6px;overflow:hidden}
+#fTimer i{display:block;height:100%;background:#dc2626;width:100%}
 #stage.sway #horiWrap{animation:sway 2.2s ease-in-out infinite}
 #stream.shake{animation:shake .12s linear infinite}
 @keyframes sway{0%,100%{transform:translateX(-50%) rotate(0)}30%{transform:translateX(-52%) rotate(-3deg)}70%{transform:translateX(-48%) rotate(3deg)}}
@@ -673,6 +704,8 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
         </svg>
         <div id="futonProp">🛏️</div>
         <div id="toraBoard"></div>
+        <div id="blackout"></div>
+        <div id="invBadge">⭐ 無敵 10</div>
         <!-- 堀が画面から消えている間も卵型チェアは残る -->
         <svg id="emptyChair" viewBox="0 0 200 250" aria-hidden="true">
           <ellipse cx="100" cy="138" rx="94" ry="122" fill="#f4f1ec" stroke="#3b2321" stroke-width="2.5"/>
@@ -787,6 +820,15 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
   <div class="cScore">堀<b id="cMe">0</b>vs<b id="cRival">0</b>たこす先生</div>
   <button id="pullBtn">💪 連打で懸垂！<small>タップ / 2キー / スペースキー</small></button>
   <div id="cTimer"><i></i></div>
+</div>
+
+<!-- ブレイキングサークル（スワイプでパンチをよける） -->
+<div id="fightLayer">
+  <div class="fTitle">🥊 ブレイキングサークル<small>堀 vs たこす先生　スワイプでパンチをよけろ！</small></div>
+  <div id="fPrompt"></div>
+  <div id="fHp"></div>
+  <div class="fBtns"><button id="fLeft">⬅ 左</button><button id="fRight">右 ➡</button></div>
+  <div id="fTimer"><i></i></div>
 </div>
 
 <!-- BAN危機 -->
@@ -906,6 +948,12 @@ const C = {
   banSafe: ['ナイススタンプw', 'パオーン', '象さんGJ', 'セーフwww'],
   away:    ['どこ行った？', 'おーい', '無人配信で草', '帰ってこーい', '声だけ聞こえる'],
   takosu:  ['たこす先生きた', '論争はじまったw', '医者vs堀', 'どっちも引かないw', '空気やばい'],
+  yupisGood: ['ちゅーきたあああ', '彼女！？', '調子乗ってて草', '無敵モード', 'リア充爆発しろ'],
+  yupisBad: ['停電！？', '何も見えん', '何が起きてるのw', '暗闇配信', 'おーい堀ー'],
+  fight:   ['ブレイキングサークル！？', 'たこす先生vs堀', '試合決定で草', 'ゴング鳴った', 'がんばれ堀'],
+  dodge:   ['よけた！', 'ナイス回避', '反射神経えぐい', 'スウェー'],
+  punched: ['いったあああ', 'クリーンヒット', '効いてる効いてる', '顔いったw'],
+  bandaged: ['包帯ぐるぐるで草', '顔見えんやん', 'ミイラ配信', '起きてるか分からんw'],
   shirtless: ['脱いだwww', '上半身裸配信', '筋肉えぐい', '服着てw', 'BANされない？w', '勝者の肉体'],
   takosuRage: ['ブチギレてて草', '懸垂勝負！？', 'なんで懸垂w', '堀いけええ', '筋肉で解決'],
   shimipeni: ['しみぺにきたああ', '水着隠したの草', 'お風呂やめとけw', 'この2人好き', 'しみぺに容赦ないw'],
@@ -1113,6 +1161,12 @@ function chibiHead(id) {
       <path d="M-31,8 Q-18,4 -5,8 Q-4,22 -15,26 Q-29,26 -31,8Z" fill="rgba(80,55,65,.88)" stroke="#c9a24a" stroke-width="2.4"/>
       <path d="M31,8 Q18,4 5,8 Q4,22 15,26 Q29,26 31,8Z" fill="rgba(80,55,65,.88)" stroke="#c9a24a" stroke-width="2.4"/>
       <path d="M-26,11 l6,-2 M10,11 l6,-2" stroke="#fff" stroke-width="1.6" opacity=".6"/></g>
+    <g data-k="band:1">
+      <ellipse cx="0" cy="6" rx="50" ry="50" fill="#f7f4ee" stroke="#3b2321" stroke-width="2.5"/>
+      <path d="M-47,-16 Q0,-28 47,-16 M-50,2 Q0,-8 50,2 M-49,20 Q0,10 49,20 M-44,38 Q0,28 44,38" stroke="#d8d2c6" stroke-width="2" fill="none"/>
+      <path d="M-30,-34 L32,48 M28,-36 L-24,52" stroke="#e8e2d6" stroke-width="8" opacity=".85"/>
+      <rect x="24" y="-10" width="18" height="10" rx="2" fill="#f2c9a0" stroke="#c8a27c" stroke-width="1" transform="rotate(24 33 -5)"/>
+      <ellipse cx="-22" cy="30" rx="9" ry="5" fill="#f4a3a3" opacity=".55"/></g>
   </g>`;
 }
 
@@ -1270,14 +1324,14 @@ function buildHori(container) {
   let cur = '';
   return {
     // trunks: 水着を着ているか / censor: 'steam'（湯気で隠す）・'stamp'（象さんスタンプ） / floatStamp: 湯船にスタンプが浮く
-    set({ expr, day, lid = 0, ban = false, trunks = true, censor = '', floatStamp = false, shirtless = false, noChair = false, props: pr = ['', ''] }) {
+    set({ expr, day, lid = 0, ban = false, trunks = true, censor = '', floatStamp = false, shirtless = false, noChair = false, bandaged = false, props: pr = ['', ''] }) {
       const kuma = CONFIG.kuma[day - 1] || CONFIG.kuma[0];
-      const key = [expr, day, ban, trunks, censor, floatStamp, shirtless, noChair, pr.join()].join('|');
+      const key = [expr, day, ban, trunks, censor, floatStamp, shirtless, noChair, bandaged, pr.join()].join('|');
       if (key !== cur) {
         cur = key;
         const lk = CONFIG.looks[day - 1] || {};
         const f = { ...FACE[expr], trunks: trunks ? 1 : '', censor, float: floatStamp ? 1 : '',
-          acc: lk.eyepatch ? 'patch' : lk.sunglasses ? 'glasses' : '', chair: lk.eggChair && !noChair ? 'egg' : '' };
+          acc: lk.eyepatch ? 'patch' : lk.sunglasses ? 'glasses' : '', chair: lk.eggChair && !noChair ? 'egg' : '', band: bandaged ? 1 : '' };
         if (lk.eyesShut && f.eyes === 'open') f.eyes = 'closed'; // 目が開いていないので、眠いのか分からない
         parts.forEach(p => { p.n.style.display = String(f[p.key] ?? '') === p.v ? '' : 'none'; });
         const anger = /^angry(\d)$/.exec(expr);
@@ -1307,7 +1361,8 @@ const el = {
   flash: $('#flash'), steam: $('#steam'), warnMarks: $('#warnMarks'),
   speech: $('#speech'), banner: $('#banner'), sc: $('#superchat'), collabWin: $('#collabWin'),
   comments: $('#commentList'), controls: $('#controls'),
-  gradePop: $('#gradePop'), emptyChair: $('#emptyChair'), viewers: $('#viewers'),
+  gradePop: $('#gradePop'), emptyChair: $('#emptyChair'), blackout: $('#blackout'), invBadge: $('#invBadge'),
+  fightLayer: $('#fightLayer'), fPrompt: $('#fPrompt'), fHp: $('#fHp'), fFill: $('#fTimer>i'), viewers: $('#viewers'),
   contestLayer: $('#contestLayer'), cMe: $('#cMe'), cRival: $('#cRival'), cFill: $('#cTimer>i'),
   guest: $('#guest'), guestSpeech: $('#guestSpeech'), toraBoard: $('#toraBoard'), banSub: $('#banSub'),
   banLayer: $('#banLayer'), banFill: $('#banTimer>i'), oke: $('#okeBtn'),
@@ -1402,6 +1457,7 @@ function startDay() {
   S.insultStreak = 0; S.angerLeft = 0; S.angerLevel = 0;
   S.pendingEvent = null; S.ban = null; S.bathEnterLeft = 0; S.bathNaked = false;
   S.special = null; S.contest = null; S.banForce = false; S.lineQueue = []; S.kuiyaEv = null;
+  S.fight = null; S.bandaged = false; S.blackout = 0; S.invincible = 0; S.riseDayMult = 1; S.eatLeft = 0;
   S.shirtless = false; S.insultLimit = CONFIG.insult.limit;
   S.awayLeft = 0; scheduleLeave();
   S.specialQueue = CONFIG.specialEvents.filter(e => e.day === S.day).map(ev => ({ ev, at: rand(ev.at[0], ev.at[1]) }));
@@ -1422,6 +1478,7 @@ function startDay() {
 
 function hideOverlays() {
   el.banLayer.classList.remove('show');
+  el.fightLayer.classList.remove('show');
   el.contestLayer.classList.remove('show');
   el.guestSpeech.classList.remove('show');
   el.steam.className = 'ov'; el.warnMarks.style.display = 'none';
@@ -1648,9 +1705,91 @@ function startKuiya(kv) {
     kv.lines.forEach((line, i) => S.lineQueue.push({ at: t + i * 2.2, guest: kv.guest, text: line }));
     t += kv.lines.length * 2.2;
   }
-  kv.hori.forEach((line, i) => S.lineQueue.push({ at: t + i * 2.4, text: line }));
+  kv.hori.forEach((line, i) => S.lineQueue.push({ at: t + i * 2.4, text: line, angry: kv.horiAngry }));
   if (kv.bonus) S.lineQueue.push({ at: t + kv.hori.length * 2.4, bonus: kv });
-  if (kv.afterAttack) S.pendingAttack = true;
+  if (kv.riseMult) { S.riseDayMult *= kv.riseMult; S.eatLeft = 3; }
+  if (kv.goodChance !== undefined) S.lineQueue.push({ at: t, luck: kv });
+  if (kv.fight) S.lineQueue.push({ at: t, fight: kv });
+}
+// ユーピス：いいこと（無敵）か悪いこと（停電）
+function yupisLuck(kv) {
+  const good = Math.random() < kv.goodChance, o = good ? kv.good : kv.bad;
+  showBanner(o.banner, 3);
+  if (good) {
+    S.mood = clamp(S.mood + o.mood, 0, 100);
+    S.invincible = o.invincible;
+    S.sleepy = 0; S.phase = 'awake'; S.awakeStim = 'kuiya'; S.awakeLeft = o.invincible; S.pendingAttack = false;
+    burstComments(C.yupisGood, 'hype', 4); Sound.play('excellent');
+  } else {
+    S.blackout = o.blackout;
+    burstComments(C.yupisBad, 'bad', 4); Sound.play('ban');
+  }
+  o.hori.forEach((line, i) => S.lineQueue.push({ at: 0.6 + i * 2.4, text: line }));
+}
+
+/* ---------- ブレイキングサークル（たこす先生とバトル。この間は配信の時間が止まる） ---------- */
+function startFight(kv) {
+  const f = kv.fight;
+  S.fight = { cfg: f, left: f.duration, hits: 0, next: 0.8, punch: null };
+  S.phase = 'idle'; S.awakeStim = null; S.awakeLeft = 0; S.attackTimer = Math.max(S.attackTimer, 2);
+  el.fightLayer.classList.add('show');
+  el.fPrompt.className = ''; el.fFill.style.width = '100%';
+  renderFightHp();
+  Sound.play('event');
+  burstComments(C.fight, 'hype', 4);
+}
+function renderFightHp() { el.fHp.textContent = '堀 ' + '❤️'.repeat(S.fight.cfg.maxHits - S.fight.hits) + '🖤'.repeat(S.fight.hits); }
+function updateFight(dt) {
+  const fg = S.fight, f = fg.cfg;
+  fg.left -= dt;
+  el.fFill.style.width = clamp(fg.left / f.duration, 0, 1) * 100 + '%';
+  if (fg.punch) {
+    if ((fg.punch.t -= dt) <= 0) fightHit();
+  } else if ((fg.next -= dt) <= 0 && fg.left > 0.3) {
+    fg.punch = { need: Math.random() < 0.5 ? 'L' : 'R', t: f.telegraph };
+    el.fPrompt.textContent = fg.punch.need === 'L' ? '👊 ⬅ 左によけろ！' : '👊 右によけろ！ ➡';
+    el.fPrompt.className = 'show';
+    Sound.play('warn');
+  }
+  if (S.speechLeft > 0 && (S.speechLeft -= dt) <= 0) el.speech.className = '';
+  if (S.fight && fg.left <= 0) finishFight(true);
+}
+function dodge(dir) {
+  const fg = S.fight;
+  if (!fg) return;
+  const node = el.horiWrap.firstElementChild;
+  if (!fg.punch) { node?.classList.remove('dodgeL', 'dodgeR'); return; }
+  if (dir !== fg.punch.need) { fightHit(); return; }
+  fg.punch = null; fg.next = rand(fg.cfg.punchEvery[0], fg.cfg.punchEvery[1]);
+  el.fPrompt.className = '';
+  node?.classList.remove('dodgeL', 'dodgeR'); void node?.getBoundingClientRect(); node?.classList.add(dir === 'L' ? 'dodgeL' : 'dodgeR');
+  Sound.play('flying'); addComment('hype', pick(C.dodge));
+}
+function fightHit() {
+  const fg = S.fight;
+  fg.punch = null; fg.hits++; fg.next = rand(fg.cfg.punchEvery[0], fg.cfg.punchEvery[1]);
+  el.fPrompt.className = '';
+  const node = el.horiWrap.firstElementChild;
+  node?.classList.remove('hitme'); void node?.getBoundingClientRect(); node?.classList.add('hitme');
+  el.stream.classList.add('shake'); setTimeout(() => el.stream.classList.remove('shake'), 300);
+  Sound.play('insult'); addComment('bad', pick(C.punched));
+  renderFightHp();
+  if (fg.hits >= fg.cfg.maxHits) finishFight(false);
+}
+function finishFight(win) {
+  const f = S.fight.cfg;
+  S.fight = null;
+  el.fightLayer.classList.remove('show');
+  addComment('sys', `── ブレイキングサークル：${win ? '堀の勝ち！' : '堀のKO負け…'} ──`);
+  if (win) {
+    S.mood = clamp(S.mood + f.winMood, 0, 100); S.shirtless = true;
+    showBanner(f.winBanner, 3); burstComments(C.shirtless, 'hype', 4); flash(); Sound.play('clear');
+    say('誰かができてるってことは、僕もできるんじゃないか', 2.4);
+  } else {
+    S.mood = clamp(S.mood + f.loseMood, 0, 100); S.bandaged = true;
+    showBanner(f.loseBanner, 3.5); burstComments(C.bandaged, 'bad', 4); Sound.play('over');
+    say('マイクロスリープである', 2);
+  }
 }
 // 順番に流すセリフ（乱入ゲスト→堀の順）
 function updateLineQueue(dt) {
@@ -1658,6 +1797,9 @@ function updateLineQueue(dt) {
   S.lineQueue.forEach(q => { q.at -= dt; });
   while (S.lineQueue.length && S.lineQueue[0].at <= 0) {
     const q = S.lineQueue.shift();
+    if ((q.fight || q.luck) && (S.special || S.contest || S.ban || S.fight)) { q.at = 0.5; S.lineQueue.push(q); break; } // ほかのイベント中は待つ
+    if (q.fight) { startFight(q.fight); break; }
+    if (q.luck) { yupisLuck(q.luck); continue; }
     if (q.bonus) {
       S.score += q.bonus.bonus;
       showBanner(q.bonus.bonusLabel, 2.6);
@@ -1666,7 +1808,7 @@ function updateLineQueue(dt) {
       addComment('sc', q.text, q.guest);
       Voice.speak(q.text, 1.3);
     } else if (S.phase !== 'limit' && S.awayLeft <= 0) {
-      say(q.text, 2.2);
+      say(q.text, 2.2, q.angry ? 2 : 0);
     }
   }
 }
@@ -1903,6 +2045,9 @@ function currentExpr() {
   if (S.ban) return { expr: 'banBath', ban: true, trunks: false, censor: 'steam', props: ['⁉️', ''] };
   if (massaging()) return { expr: S.phase === 'awake' ? 'massageAwake' : 'massage', props: ['', ''] };
   if (S.contest) return { expr: 'pullup', props: ['🔥', ''] };
+  if (S.fight) return { expr: 'angry2', props: ['🥊', ''] };
+  if (S.invincible > 0) return { expr: 'happy', props: ['💋', '⭐'] };
+  if (S.eatLeft > 0 && S.phase !== 'limit') return { expr: 'angry2', props: ['🐙', '💢'] };
   if (S.phase === 'limit') return { expr: 'limit', props: ['💤', ''] };
   if (S.angerLeft > 0 && S.angerLevel > 0) return { expr: 'angry' + S.angerLevel, props: [S.angerLevel >= 2 ? '💢💢' : '💢', ''] };
   if (S.phase === 'awake') {
@@ -1955,6 +2100,7 @@ function update(dt) {
     return;
   }
   if (S.contest) { updateContest(dt); return; }
+  if (S.fight) { updateFight(dt); return; }
 
   S.t += dt;
   if (S.t >= CONFIG.dayLength) { S.t = CONFIG.dayLength; endDay(); return; }
@@ -1972,7 +2118,7 @@ function update(dt) {
       say(pick(LINES.leave), 1.2);
     }
   }
-  const rise = dayParams().riseSpeed * S.speedBoost.mult * (S.special ? S.special.ev.riseMult : 1);
+  const rise = dayParams().riseSpeed * S.speedBoost.mult * (S.special ? S.special.ev.riseMult : 1) * S.riseDayMult;
 
   switch (S.phase) {
     case 'idle':
@@ -2007,6 +2153,9 @@ function update(dt) {
 
   CONFIG.stimuli.forEach(s => { if (S.cd[s.id] > 0) S.cd[s.id] = Math.max(0, S.cd[s.id] - dt); });
   updateLineQueue(dt);
+  if (S.blackout > 0) S.blackout -= dt;
+  if (S.eatLeft > 0) S.eatLeft -= dt;
+  if (S.invincible > 0) { S.invincible -= dt; S.sleepy = 0; }
   if (S.angerLeft > 0) { S.angerLeft -= dt; if (S.angerLeft <= 0) el.stream.classList.remove('shake'); }
   if (S.bathEnterLeft > 0) S.bathEnterLeft -= dt;
 
@@ -2089,14 +2238,17 @@ function render() {
 
   const ex = currentExpr();
   const pose = FACE[ex.expr].pose;
-  const gk = S.special && !massaging() && playingLike && pose === 'stand' ? S.special.ev.kind : '';
+  const gk = S.fight && playingLike ? 'takosu' : S.special && !massaging() && playingLike && pose === 'stand' ? S.special.ev.kind : '';
   el.guest.dataset.kind = gk; el.guest.classList.toggle('show', !!gk);
   el.guest.classList.toggle('pull', !!S.contest);
-  el.guest.classList.toggle('angry', !!S.contest || (gk === 'takosu' && S.special.left > 50));
+  el.guest.classList.toggle('angry', !!S.contest || !!S.fight || (gk === 'takosu' && S.special?.left > 50));
   el.stream.classList.toggle('withGuest', !!gk);
   el.stage.dataset.scene = pose === 'bath' || pose === 'enter' ? 'bath' : pose === 'massage' ? 'massage' : gk === 'tora' ? 'tora' : (lk.room || 'kitchen');
   const props = lk.noZzz ? ex.props.map(x => (x === '💤' ? '' : x)) : ex.props;
-  hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, shirtless: S.shirtless, noChair: S.awayLeft > 0, props });
+  hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, shirtless: S.shirtless, noChair: S.awayLeft > 0, bandaged: S.bandaged, props });
+  el.blackout.classList.toggle('on', S.blackout > 0 && playingLike);
+  el.invBadge.classList.toggle('show', S.invincible > 0 && playingLike);
+  if (S.invincible > 0) el.invBadge.textContent = `⭐ 無敵 ${Math.ceil(S.invincible)}`;
   el.emptyChair.classList.toggle('show', !!lk.eggChair && S.awayLeft > 0 && playingLike);
 }
 
@@ -2120,6 +2272,16 @@ $('#toTitleBtn').addEventListener('click', toTitle);
 $('#toTitleBtn2').addEventListener('click', toTitle);
 el.oke.addEventListener('pointerdown', e => { e.preventDefault(); hideOke(); });
 $('#pullBtn').addEventListener('pointerdown', e => { e.preventDefault(); pullRep(); });
+// バトル：左右ボタン、またはスワイプでよける
+$('#fLeft').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); dodge('L'); });
+$('#fRight').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); dodge('R'); });
+let swipeX = null;
+el.fightLayer.addEventListener('pointerdown', e => { swipeX = e.clientX; });
+el.fightLayer.addEventListener('pointerup', e => {
+  if (swipeX === null) return;
+  const dx = e.clientX - swipeX; swipeX = null;
+  if (Math.abs(dx) > 30) dodge(dx < 0 ? 'L' : 'R');
+});
 el.mute.addEventListener('click', () => {
   Sound.muted = !Sound.muted; Sound.unlock();
   storage.set(CONFIG.storageKeys.muted, Sound.muted ? '1' : '0');
@@ -2130,6 +2292,9 @@ el.mute.textContent = Sound.muted ? '🔇' : '🔊';
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
   if (S.contest && (e.key === '2' || e.code === 'Space')) { e.preventDefault(); pullRep(); return; }
+  if (S.fight && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'a' || e.key === 'd')) {
+    e.preventDefault(); dodge(e.key === 'ArrowLeft' || e.key === 'a' ? 'L' : 'R'); return;
+  }
   const st = CONFIG.stimuli.find(s => s.key === e.key);
   if (st) { Sound.unlock(); useStimulus(st.id); return; }
   if (e.code === 'Space') {
