@@ -67,7 +67,8 @@ const CONFIG = {
   },
   bath: {
     banChance: 0.2,     // 水着を履き忘れる（BAN危機）確率。残りは水着を着て入る
-    banTimeLimit: 1.0,  // 「スタンプで隠せ！」の制限時間（秒）
+    revealTime: 1.6,    // 履き忘れに気づく演出の秒数（この間はタイマーが減らない。押せば即セーフ）
+    banTimeLimit: 1.5,  // 「スタンプで隠せ！」の制限時間（秒）
     enterDuration: 1.2, // 湯船に入るアニメーションの長さ（秒）
   },
   collab: {
@@ -88,7 +89,7 @@ const CONFIG = {
     list: [
       { id: 'asmr',     weight: 1, banner: '🎧 視聴者「ASMRやって〜」', comment: 'ASMRやって〜',      hori: 'え、ささやき声で…？ふぁ…', effect: { type: 'add', amount: 20 } },
       { id: 'midnight', weight: 1, banner: '🌙 深夜の静かな時間帯…',     comment: 'みんな寝た…？',      hori: 'なんか…静かやな…',        effect: { type: 'speed', mult: 2, duration: 5 } },
-      { id: 'full',     weight: 1, banner: '🍜 夜食を食べて満腹',         comment: '飯テロやめろw',      hori: '夜食うまっ…おなかいっぱい…', effect: { type: 'attack' } },
+      { id: 'full',     weight: 1, banner: '🍺 なぜか配信中に飲酒',       comment: '耐久配信中に酒は自爆やろw', hori: '15年ぶりのお酒を飲む', effect: { type: 'attack' } },
       { id: 'longtext', weight: 1, banner: '📜 長文コメントの読み上げ',   comment: '長文失礼します。堀さんの配信を初めて見たのは3年前の…', hori: 'えー、読みますね…「長文失礼します」…', effect: { type: 'add', amount: 15 } },
       { id: 'futon',    weight: 1, banner: '🛏️ 布団が視界に入った',      comment: '後ろの布団ふかふかそう', hori: '布団…いや見てない見てない', effect: { type: 'add', amount: 10 } },
     ],
@@ -96,13 +97,31 @@ const CONFIG = {
 
   // 突発イベント（決まった日に1回、ランダムな時刻に発生。データ配列で追加できる）
   //   at: 発生する時刻（1日の経過秒の範囲） / duration: 続く秒数
+  //   kind: massage（整体） / tora（令和の虎） / critic（ダメ出し）
   //   riseMult: 眠気上昇速度の倍率 / attackMult: 発作間隔の倍率 / firstAttack: 開始から最初の発作までの秒数
+  //   block: 使えなくなる刺激 / lineInterval: 相手がしゃべる間隔（秒） / partnerLines: 相手のセリフ / horiLines: 堀の言い返し
+  //   critSleepy: ダメ出し1回で増える眠気 / critMood: ダメ出し1回で下がる機嫌
   specialEvents: [
-    { id: 'massage', day: 2, at: [12, 34], duration: 18, riseMult: 3, attackMult: 0.3, firstAttack: [0.3, 2.0],
+    { id: 'massage', kind: 'massage', day: 2, at: [12, 34], duration: 18, riseMult: 3, attackMult: 0.3, firstAttack: [0.3, 2.0],
       banner: '💆 突然の整体タイム！', partner: '整体師・もみ山さん',
-      partnerLines: ['はーい、ほぐしていきますね〜', '首こってますね〜', 'ここ効きますよ〜'],
-      endLine: 'うわ、めっちゃ体軽なったわ！',
+      partnerLines: ['はーい、ほぐしていきますね〜', '首こってますね〜', '…寝てましたよね？'],
+      endLine: '寝てたでしょ、今。薄目が開いてるだけで', endComment: '── 整体タイム終了 ──',
       snoreInterval: 0.6 },
+    { id: 'tora', kind: 'tora', day: 4, at: [10, 28], duration: 14, riseMult: 1, attackMult: 1,
+      block: ['workout', 'bath', 'collab'], blockedLine: '🔒 虎の前では使えない！（悪口スパチャだけ使える）',
+      banner: '🐯 令和の虎に志願者として出演！ 筋トレ・風呂・コラボ封印', partner: '虎',
+      partnerLines: ['30分睡眠って、エビデンスあるんですか？', 'で、そのサプリで何がしたいの？', '希望額500万の根拠は？',
+                     '正直、信用できないんですよね', 'ノーマネーでフィニッシュです'],
+      horiLines: ['なんで断言できる？', 'あの、ナメてます？', 'お医者さんなんて、ただの医者ですからね', '誰かができてるってことは、僕もできるんじゃないか'],
+      lineInterval: 3.2, board: ['希望額 500万円', '残り 500万円'],
+      endLine: '自分に合う生き方は、自分で探すしかない', endComment: '── 令和の虎 終了 ──' },
+    { id: 'critic', kind: 'critic', day: 5, at: [10, 28], duration: 16, riseMult: 1.2, attackMult: 1,
+      banner: '🐉 ドラゴン先生のダメ出しタイム！', partner: 'ドラゴン先生',
+      partnerLines: ['その髪型、何年前のセンス？', '姿勢悪っ。モデルなら0点', '肌荒れてるよ、寝てないでしょ',
+                     '筋肉はいいけど服がダサい', 'ショートスリーパー（笑）', '顔むくんでるよ'],
+      horiLines: ['お前がな！', 'あの、ナメてます？', '普通に喋ってもらっていいですか？', 'なんで断言できる？'],
+      lineInterval: 2.6, critSleepy: 10, critMood: -6,
+      endLine: '睡眠時間は自由', endComment: '── ダメ出しタイム終了 ──' },
   ],
 
   // 日ごとの堀の見た目（目が見えにくくなるほど難しい）
@@ -153,6 +172,15 @@ const CONFIG = {
   },
 
   comments: { intervalMin: 0.5, intervalMax: 1.3, max: 40 },
+
+  // 堀のボイス（端末の読み上げ機能を使う。声は端末によって変わる）
+  //   preferVoices: 優先して使う声の名前（男性の声を優先）
+  voice: { enabled: true, rate: 1.1, pitch: 0.8, volume: 1.0,
+    preferVoices: ['Otoya', 'Hattori', 'Ichiro', 'Keita', 'Takumi', 'Reed', 'Eddy', 'Rocko', 'Male'] },
+
+  // BGM（Web Audioで鳴らすゆるいループ曲）
+  //   tempo: BPM（Dayが進むごとに tempoPerDay ずつ速くなる） / volume: 音量
+  bgm: { enabled: true, volume: 0.05, tempo: 88, tempoPerDay: 3 },
 
   storageKeys: { bestDay: 'shortSleeper.bestDay', clearedDay: 'shortSleeper.clearedDay', muted: 'shortSleeper.muted' },
 };
@@ -212,7 +240,22 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 .scene{position:absolute;inset:0;width:100%;height:100%}
 .scene{display:none}
 #stage[data-scene=kitchen] .kitchen,#stage[data-scene=curtain] .curtain,
-#stage[data-scene=bath] .bathroom,#stage[data-scene=massage] .salon{display:block}
+#stage[data-scene=bath] .bathroom,#stage[data-scene=massage] .salon,#stage[data-scene=tora] .studio{display:block}
+#guest{position:absolute;left:2%;bottom:0;height:80%;aspect-ratio:200/250;display:none;z-index:1}
+#guest.show{display:block}
+#guest svg{display:none;width:100%;height:100%}
+#guest[data-kind=tora] .g-tora,#guest[data-kind=critic] .g-critic{display:block}
+#stream.withGuest #horiWrap{left:68%}
+#stream.withGuest #speech{left:auto;right:3%;top:13%;transform:none;max-width:46%}
+#guestSpeech{position:absolute;left:21%;top:4%;max-width:38%;background:#fff;color:#222;border:3px solid #4a2c2a;border-radius:12px;
+  padding:6px 10px;font-size:clamp(11px,2.8vw,15px);font-weight:800;line-height:1.35;z-index:7;opacity:0;transition:opacity .15s}
+#guestSpeech.show{opacity:1}
+#guestSpeech b{display:block;font-size:.8em;color:#b45309}
+#toraBoard{position:absolute;left:3%;bottom:4%;z-index:3;display:none;font-family:serif;font-weight:900;color:#f5d36b;
+  text-shadow:0 2px 0 #000,0 0 4px #000;line-height:1.15;font-size:clamp(13px,3.6vw,24px)}
+#stage[data-scene=tora] #toraBoard{display:block}
+.stim.sealed{opacity:.4}
+.stim.sealed::after{content:"🔒";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:30px;background:#0006}
 .sky-top{stop-color:var(--sky-top,#0b1030)}
 .sky-bot{stop-color:var(--sky-bot,#1b2350)}
 .stars{opacity:var(--stars,1)}
@@ -416,8 +459,13 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 #banLayer{position:fixed;inset:0;z-index:90;display:none;flex-direction:column;align-items:center;justify-content:flex-end;
   padding:0 16px max(24px,env(safe-area-inset-bottom));background:rgba(255,200,0,.12)}
 #banLayer.show{display:flex}
-#banLayer .banTitle{position:absolute;top:18%;left:0;right:0;text-align:center;font-size:clamp(26px,8vw,52px);font-weight:900;color:#fff;
-  text-shadow:0 0 10px #f00,0 0 2px #000;animation:blink .2s steps(2) infinite}
+#banLayer .banTitle{position:absolute;top:14%;left:0;right:0;text-align:center;font-size:clamp(24px,7vw,48px);font-weight:900;color:#fff;
+  text-shadow:0 0 10px #f00,0 0 2px #000}
+#banLayer .banTitle small{display:block;font-size:.5em;margin-top:6px}
+#banLayer.urgent .banTitle{animation:blink .2s steps(2) infinite}
+#banLayer .banSub{position:absolute;top:34%;left:0;right:0;text-align:center;font-size:clamp(14px,4vw,22px);font-weight:900;color:#fde047;
+  text-shadow:0 0 6px #000,0 0 2px #000}
+#banLayer:not(.urgent) #banTimer i{background:#fbbf24}
 #okeBtn{width:min(92vw,460px);min-height:120px;border:none;border-radius:22px;background:#fbbf24;color:#3b2200;
   font-size:clamp(26px,7vw,40px);font-weight:900;box-shadow:0 6px 0 #a16207;margin-bottom:10px}
 #okeBtn small{display:block;font-size:13px;font-weight:700}
@@ -518,6 +566,13 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
           <rect class="room-dim" width="400" height="300" fill="#120c26"/>
         </svg>
         <!-- 背景：整体サロン -->
+        <!-- 背景：令和の虎風のスタジオ（白い壁） -->
+        <svg class="scene studio" viewBox="0 0 400 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+          <rect width="400" height="300" fill="#f4f4f2"/>
+          <rect y="236" width="400" height="64" fill="#d9d6d0"/>
+          <rect x="150" y="150" width="14" height="22" rx="2" fill="#cfcac2"/>
+          <text x="392" y="22" text-anchor="end" font-size="13" font-weight="900" fill="#c81e1e">志願者募集中!!</text>
+        </svg>
         <svg class="scene salon" viewBox="0 0 400 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
           <rect width="400" height="300" fill="#efece6"/>
           <rect x="250" y="0" width="70" height="300" fill="#f7f5f1" stroke="#ddd8cf" stroke-width="2"/>
@@ -533,6 +588,40 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
           <rect class="room-dim" width="400" height="300" fill="#120c26" style="opacity:calc(var(--dim,.3) * .4)"/>
         </svg>
         <div id="futonProp">🛏️</div>
+        <div id="toraBoard"></div>
+        <!-- 突発イベントの相手（架空のキャラ） -->
+        <div id="guest">
+          <svg class="g-tora" viewBox="0 0 200 250" aria-hidden="true">
+            <path d="M58 250 L66 196 M142 250 L134 196" stroke="#555" stroke-width="7" stroke-linecap="round"/>
+            <rect x="52" y="186" width="96" height="16" rx="6" fill="#777"/>
+            <path d="M54 124 Q100 104 146 124 L150 196 L50 196 Z" fill="#1d1d1f" stroke="#4a2c2a" stroke-width="4"/>
+            <rect x="62" y="196" width="28" height="54" rx="8" fill="#26262a"/><rect x="110" y="196" width="28" height="54" rx="8" fill="#26262a"/>
+            <rect x="88" y="100" width="24" height="20" fill="#f2c9a0"/>
+            <ellipse cx="100" cy="70" rx="42" ry="44" fill="#f6d2ae" stroke="#4a2c2a" stroke-width="4"/>
+            <path d="M56 70 Q56 22 100 22 Q144 22 144 70 Q132 42 100 44 Q70 42 56 70Z" fill="#2b1d16"/>
+            <path d="M74 64 l16 4 M126 64 l-16 4" stroke="#2b1d16" stroke-width="4" stroke-linecap="round"/>
+            <path d="M78 76 h12 M110 76 h12" stroke="#2b1d16" stroke-width="4" stroke-linecap="round"/>
+            <path d="M90 96 h20" stroke="#4a2c2a" stroke-width="3.5" stroke-linecap="round"/>
+            <g transform="rotate(-14 134 160)"><rect x="104" y="136" width="58" height="44" fill="#fff" stroke="#999" stroke-width="2"/>
+              <path d="M112 148 h40 M112 156 h40 M112 164 h30" stroke="#bbb" stroke-width="2"/></g>
+            <circle cx="112" cy="168" r="9" fill="#f6d2ae" stroke="#4a2c2a" stroke-width="3"/>
+            <text x="76" y="160" text-anchor="middle" font-size="22" font-weight="900" fill="#f5c542">虎</text>
+          </svg>
+          <svg class="g-critic" viewBox="0 0 200 250" aria-hidden="true">
+            <rect x="66" y="200" width="28" height="50" rx="8" fill="#2b2f45"/><rect x="106" y="200" width="28" height="50" rx="8" fill="#2b2f45"/>
+            <path d="M52 128 Q100 108 148 128 L152 206 L48 206 Z" fill="#1f2a4d" stroke="#4a2c2a" stroke-width="4"/>
+            <path d="M86 116 L100 136 L114 116" fill="#9ec5ff" stroke="#4a2c2a" stroke-width="3"/>
+            <path d="M60 124 L134 206 L116 212 L46 136 Z" fill="#fffaf0" stroke="#d4a017" stroke-width="3"/>
+            <text x="0" y="0" font-size="11" font-weight="900" fill="#8a6a10" transform="translate(70 148) rotate(48)">MR.MODEL</text>
+            <rect x="88" y="100" width="24" height="20" fill="#e9bf98"/>
+            <ellipse cx="100" cy="68" rx="40" ry="46" fill="#f3cfa9" stroke="#4a2c2a" stroke-width="4"/>
+            <path d="M58 64 Q54 14 104 16 Q150 18 142 66 Q136 36 112 32 Q84 30 76 44 Q66 50 58 64Z" fill="#1c1410"/>
+            <path d="M72 58 l16 -2 M112 50 l16 6" stroke="#1c1410" stroke-width="4" stroke-linecap="round"/>
+            <ellipse cx="82" cy="72" rx="4" ry="5" fill="#1c1410"/><ellipse cx="120" cy="70" rx="5" ry="6" fill="#1c1410"/>
+            <path d="M92 98 q8 -6 16 0" fill="none" stroke="#4a2c2a" stroke-width="3.5" stroke-linecap="round"/>
+            <path d="M84 92 q16 4 32 0" fill="none" stroke="#3a2a22" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </div>
         <div id="horiWrap"></div>
       </div>
       <div id="clock">
@@ -554,6 +643,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
       <div id="lidTop"></div><div id="lidBot"></div>
       <div id="warnMarks"><span style="left:8%;top:30%">⚠️</span><span style="right:8%;top:30%">⚠️</span><span style="left:44%;top:22%">🚨</span></div>
       <div id="speech"></div>
+      <div id="guestSpeech"></div>
       <div id="banner"></div>
       <div id="superchat"><div class="sc-h"></div><div class="sc-b"></div></div>
       <div class="ov" id="flash"></div>
@@ -566,7 +656,8 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 
 <!-- BAN危機 -->
 <div id="banLayer">
-  <div class="banTitle">⚠️ 映ったらアウト！！ ⚠️</div>
+  <div class="banTitle">⚠️ 水着を履き忘れてる！！ ⚠️<small>このまま映ったら配信BAN…</small></div>
+  <div class="banSub" id="banSub">湯船に入る前に 🐘 スタンプで隠せ！</div>
   <button id="okeBtn">🐘 スタンプで隠せ！<small>タップ / スペースキー</small></button>
   <div id="banTimer"><i></i></div>
 </div>
@@ -637,19 +728,22 @@ const storage = {
 
 /* ---------- セリフ・コメント ---------- */
 const LINES = {
-  idle:    ['ショートスリーパーなんで余裕っす', '今日も元気に配信していくぞ〜', '30分寝たら十分なんよ', 'コメント読んでいくね〜'],
-  idleLow: ['…なに？', 'はぁ…', '別に怒ってないけど？'],
+  idle:    ['自分に合う生き方は、自分で探すしかない', '起きた瞬間からすべてに感謝することで、不幸になることはない',
+            '誰かができてるってことは、僕もできるんじゃないか', '活動ごとに脳を使い分けることが、脳を休ませることにつながる',
+            'キャビテーションを紹介するためにこの場を設けている', 'まあ、山に登るというか、山にいる（笑）'],
+  idleLow: ['普通に喋ってもらっていいですか？', 'お医者さんなんて、ただの医者ですからね'],
   attack:  ['……ふぁ…', 'あれ…なんか…', 'ね、ねむくないし…', 'ちょ…まぶたが…'],
   limit:   ['………zz', '…………', 'す…ぴ…'],
-  wake:    ['はっ！寝てない寝てない！', 'うおっ！起きた！', '目ぇ覚めたわ！', 'セーフ！！'],
+  wake:    ['マイクロスリープである', '寝るか寝ないかはどうでも良い', '睡眠時間は自由',
+            '寝ないのが正義だよみたいな言葉が一人歩きしちゃう。そんなことはね、思ってない'],
   insult: [
-    ['は？なにそれw', 'いや効かんけど？', '草。で？', 'はいはいw'],
-    ['…お前さっきからなんなん？', 'しつこいって', 'おもんないねん、それ'],
-    ['マジで次言ったら知らんからな', '……（無言で睨む）', '……もう一回言うてみ？'],
-    ['もうええわ、配信終わり！'],
+    ['なんで断言できる？'],
+    ['普通に喋ってもらっていいですか？'],
+    ['あの、ナメてます？'],
+    ['お前がな！'],
   ],
-  workout: ['ダンベルいくぞ！ふんっ！', 'あと10回！ふんっ！', '筋肉で眠気を殺す！'],
-  bath:    ['ひとっ風呂浴びてくるわ〜', 'あ〜目ぇ覚める〜♨️', 'スマホ見ながら長風呂や〜'],
+  workout: ['スポーツをするか、食前1時間にコーヒーを飲めば眠気は防げる', '活動ごとに脳を使い分けることが、脳を休ませることにつながる'],
+  bath:    ['起きた瞬間からすべてに感謝することで、不幸になることはない', '自分に合う生き方は、自分で探すしかない'],
   banSafe: ['あっぶな！！象さんありがとう！', 'セーフ！スタンプ職人に感謝！'],
   collab:  ['今日はスペシャルゲスト！ぴよ太さん！', 'うわ本物や！テンション上がる〜！'],
   partner: ['ぴよぴよ〜！ミラクル☆ぴよ太だよ！', '堀くん顔色やばくない？w'],
@@ -675,6 +769,8 @@ const C = {
   ban:     ['スタンプ！スタンプ！！', '履いてないやん！？', 'カメラ止めろ', 'アウトアウト'],
   banSafe: ['ナイススタンプw', 'パオーン', '象さんGJ', 'セーフwww'],
   away:    ['どこ行った？', 'おーい', '無人配信で草', '帰ってこーい', '声だけ聞こえる'],
+  tora:    ['虎きたああ', '公開処刑で草', '希望額強気すぎ', 'エビデンスは？', 'ノーマネーの予感', '空気ピリピリ'],
+  critic:  ['辛口すぎて草', 'ダメ出しえぐい', '言い返せw', 'ドラゴン容赦ない', 'MR.MODELの圧', '堀くん顔こわばってる'],
   massage: ['これ寝てる？', '気持ちよさそう', '起きてる起きてる', 'いや寝てるやろ', '整体うらやま', '顔が平和', 'どっち？w'],
 };
 
@@ -719,6 +815,82 @@ const Sound = {
       case 'day':     this.tone(587, 0.12, { type: 'triangle', vol: 0.18 }); this.tone(880, 0.2, { type: 'triangle', vol: 0.18, delay: 0.12 }); break;
       case 'nap':     this.tone(392, 0.6, { vol: 0.12, to: 196 }); break;
       case 'snore':   this.tone(85, 0.45, { type: 'sawtooth', vol: 0.12, to: 60 }); break;
+    }
+  },
+};
+
+/* ---------- 堀のボイス（Web Speech API の読み上げ） ---------- */
+const Voice = {
+  voice: null,
+  ok: 'speechSynthesis' in window,
+  pickVoice() {
+    if (!this.ok) return;
+    const ja = speechSynthesis.getVoices().filter(v => /^ja/i.test(v.lang));
+    this.voice = CONFIG.voice.preferVoices.map(n => ja.find(v => v.name.includes(n))).find(Boolean) || ja[0] || null;
+  },
+  unlock() { // iOSは最初のタップ中に一度しゃべらせないと声が出ない
+    if (!this.ok || this.unlocked) return;
+    this.unlocked = true;
+    try { const u = new SpeechSynthesisUtterance(''); u.volume = 0; speechSynthesis.speak(u); } catch (e) { /* 無視 */ }
+  },
+  speak(text, pitch = CONFIG.voice.pitch) {
+    if (!this.ok || !CONFIG.voice.enabled || Sound.muted) return;
+    const t = text.replace(/[（(][^）)]*[）)]/g, '').replace(/[^\p{L}\p{N}、。！？!?ー〜]/gu, '');
+    if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(t)) return; // 「……zz」などは読まない
+    if (!this.voice) this.pickVoice();
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(t);
+      u.lang = 'ja-JP'; if (this.voice) u.voice = this.voice;
+      u.rate = CONFIG.voice.rate; u.pitch = pitch; u.volume = CONFIG.voice.volume;
+      speechSynthesis.speak(u);
+    } catch (e) { /* 無視 */ }
+  },
+  stop() { if (this.ok) try { speechSynthesis.cancel(); } catch (e) { /* 無視 */ } },
+};
+if (Voice.ok) speechSynthesis.addEventListener?.('voiceschanged', () => Voice.pickVoice());
+
+/* ---------- BGM（ゆるいローファイ風ループを Web Audio で鳴らす） ---------- */
+const Bgm = {
+  on: false, timer: null, step: 0, nextTime: 0, gain: null,
+  // コード進行（1小節ずつ）：Fmaj7 → Em7 → Dm7 → Cmaj7（MIDIノート番号）
+  chords: [[53, 57, 60, 64], [52, 55, 59, 62], [50, 53, 57, 60], [48, 52, 55, 59]],
+  scale: [72, 74, 76, 79, 81, 84],
+  start() {
+    if (!CONFIG.bgm.enabled || this.on || !Sound.ctx) return;
+    const c = Sound.ctx;
+    this.gain = c.createGain(); this.gain.gain.value = Sound.muted ? 0 : CONFIG.bgm.volume;
+    this.gain.connect(c.destination);
+    this.on = true; this.step = 0; this.nextTime = c.currentTime + 0.1;
+    this.timer = setInterval(() => this.schedule(), 100);
+  },
+  stop() {
+    if (!this.on) return;
+    this.on = false; clearInterval(this.timer);
+    const g = this.gain, c = Sound.ctx;
+    g.gain.setTargetAtTime(0, c.currentTime, 0.3);
+    setTimeout(() => g.disconnect(), 1500);
+  },
+  setMuted(m) { if (this.gain) this.gain.gain.setTargetAtTime(m ? 0 : CONFIG.bgm.volume, Sound.ctx.currentTime, 0.05); },
+  note(midi, t, d, type, vol) {
+    const c = Sound.ctx, o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(this.gain); o.start(t); o.stop(t + d + 0.05);
+  },
+  schedule() {
+    const c = Sound.ctx;
+    const tempo = CONFIG.bgm.tempo + CONFIG.bgm.tempoPerDay * ((S.day || 1) - 1);
+    const eighth = 60 / tempo / 2;
+    while (this.nextTime < c.currentTime + 0.3) {
+      const t = this.nextTime, i = this.step % 8, chord = this.chords[Math.floor(this.step / 8) % 4];
+      if (i === 0) chord.forEach(n => this.note(n, t, eighth * 7.5, 'triangle', 0.35));        // 和音
+      if (i === 0 || i === 3 || i === 4) this.note(chord[0] - 12, t, eighth * 1.6, 'sine', 0.9); // ベース
+      if (i === 2 || i === 6) this.note(90, t, 0.04, 'square', 0.08);                          // ハイハット代わり
+      if (Math.random() < 0.35) this.note(pick(this.scale), t, eighth * 1.8, 'sine', 0.3);     // メロディ（気まぐれ）
+      this.nextTime += eighth; this.step++;
     }
   },
 };
@@ -978,6 +1150,7 @@ const el = {
   flash: $('#flash'), steam: $('#steam'), warnMarks: $('#warnMarks'),
   speech: $('#speech'), banner: $('#banner'), sc: $('#superchat'), collabWin: $('#collabWin'),
   comments: $('#commentList'), controls: $('#controls'),
+  guest: $('#guest'), guestSpeech: $('#guestSpeech'), toraBoard: $('#toraBoard'), banSub: $('#banSub'),
   banLayer: $('#banLayer'), banFill: $('#banTimer>i'), oke: $('#okeBtn'),
   screens: { title: $('#screenTitle'), dayStart: $('#screenDay'), nap: $('#screenNap'), gameover: $('#screenOver'), clear: $('#screenClear') },
 };
@@ -1037,6 +1210,8 @@ function dayParams() {
   return { attackMin: d.attackMin / k, attackMax: d.attackMax / k, riseSpeed: d.riseSpeed * k, grace: d.grace / k, awakeScale: (d.awakeScale ?? 1) / k };
 }
 const look = () => CONFIG.looks[S.day - 1] || {};
+const massaging = () => S.special?.ev.kind === 'massage';
+const sealed = id => !!S.special?.ev.block?.includes(id);
 function scheduleLeave() { const lv = look().leave; S.leaveTimer = lv ? rand(lv.intervalMin, lv.intervalMax) : Infinity; }
 const progress = () => clamp(S.t / CONFIG.dayLength, 0, 1);
 const attackFactor = () => 1 - (1 - CONFIG.inDay.attackEndFactor) * progress();
@@ -1052,6 +1227,7 @@ function scheduleEvent(first = false) {
 
 function setState(s) {
   S.state = s; S.stateTimer = 0;
+  if (['dayStart', 'playing', 'nap'].includes(s)) Bgm.start(); else Bgm.stop();
   Object.entries(el.screens).forEach(([k, node]) => node.classList.toggle('show', k === s));
 }
 
@@ -1087,6 +1263,7 @@ function startDay() {
 
 function hideOverlays() {
   el.banLayer.classList.remove('show');
+  el.guestSpeech.classList.remove('show');
   el.steam.className = 'ov'; el.warnMarks.style.display = 'none';
   el.collabWin.classList.remove('show');
   el.speech.className = ''; el.banner.classList.remove('show'); el.sc.classList.remove('show');
@@ -1116,6 +1293,7 @@ function gameOver(reason) {
   $('#retryBtn').textContent = S.day > 1 ? `Day ${S.day} からリトライ` : 'リトライ';
   $('#retryFromStart').style.display = S.day > 1 ? '' : 'none';
   S.state = 'ending'; S.stateTimer = 0; S.endReason = reason;
+  Bgm.stop();
   Sound.play('over');
 }
 
@@ -1206,6 +1384,7 @@ function renderSky(p) {
 function useStimulus(id) {
   if (S.state !== 'playing' || S.ban) return;
   const st = STIM[id];
+  if (sealed(id)) { Sound.play('denied'); showBanner(S.special.ev.blockedLine, 1.4); return; }
   if (S.uses[id] === 0 || S.cd[id] > 0) { Sound.play('denied'); return; }
   if (S.uses[id] !== null) S.uses[id]--;
   S.cd[id] = st.cooldown;
@@ -1229,9 +1408,9 @@ function useStimulus(id) {
 
   if (id === 'bath') {
     // 整体中は施術台の上なので、風呂の効果だけ入る（BAN危機・入浴演出なし）
-    S.bathNaked = !S.special && Math.random() < CONFIG.bath.banChance;
+    S.bathNaked = !massaging() && Math.random() < CONFIG.bath.banChance;
     if (S.bathNaked) { startBanCrisis(); return; } // スタンプで隠せたら風呂の効果を適用
-    S.bathEnterLeft = S.special ? 0 : CONFIG.bath.enterDuration;
+    S.bathEnterLeft = massaging() ? 0 : CONFIG.bath.enterDuration;
   }
   applyAwake(st);
 }
@@ -1266,12 +1445,14 @@ function applyAwake(st) {
 
 /* ---------- 風呂のBAN危機 ---------- */
 function startBanCrisis() {
-  S.ban = { left: CONFIG.bath.banTimeLimit };
-  el.banLayer.classList.add('show');
+  S.ban = { reveal: CONFIG.bath.revealTime, left: CONFIG.bath.banTimeLimit };
+  el.banLayer.classList.add('show'); el.banLayer.classList.remove('urgent');
+  el.banSub.textContent = '湯船に入る前に 🐘 スタンプで隠せ！';
+  el.banFill.style.width = '100%';
   el.steam.className = 'ov on heavy';
   el.warnMarks.style.display = 'block';
   Sound.play('ban');
-  say('あれ…水着履いてへん！！', CONFIG.bath.banTimeLimit + 0.5, 2);
+  say('あれ…水着履いてへん！！', CONFIG.bath.revealTime + CONFIG.bath.banTimeLimit, 2);
   burstComments(C.ban, 'bad', 3);
 }
 function hideOke() {
@@ -1289,7 +1470,7 @@ function hideOke() {
 /* ---------- 眠気 ---------- */
 function startAttack() {
   S.phase = 'rising';
-  if (S.special) return; // マッサージ中は眠りに落ちる合図を出さない
+  if (massaging()) return; // マッサージ中は眠りに落ちる合図を出さない
   Sound.play('attack');
   if (S.awayLeft <= 0) say(pick(LINES.attack), 1.6);
 }
@@ -1299,7 +1480,7 @@ function enterLimit() {
   S.awakeStim = null; S.awakeLeft = 0;
   S.graceTotal = S.graceLeft = currentGrace();
   S.heartTimer = 0;
-  if (S.special) { S.snoreTimer = 0; return; } // マッサージ中の合図はいびきだけ
+  if (massaging()) { S.snoreTimer = 0; return; } // マッサージ中の合図はいびきだけ
   Sound.play('warn');
   if (S.awayLeft <= 0) say(pick(LINES.limit), S.graceTotal);
 }
@@ -1340,26 +1521,56 @@ function applyEvent(ev) {
 
 /* ---------- 突発イベント ---------- */
 function startSpecial(ev) {
-  S.special = { ev, left: ev.duration };
-  S.breathTimer = rand(0.8, 2);
-  showBanner(ev.banner, 2.2);
+  S.special = { ev, left: ev.duration, lineTimer: 1.2, replyTimer: 0, last: null };
+  showBanner(ev.banner, 2.6);
   Sound.play('event');
-  addComment('sc', pick(ev.partnerLines), ev.partner);
-  burstComments(C.massage, '', 2);
-  if (S.phase === 'idle') S.attackTimer = rand(ev.firstAttack[0], ev.firstAttack[1]);
+  burstComments(C[ev.kind], '', 2);
+  if (S.awayLeft > 0) { S.awayLeft = 0; scheduleLeave(); } // 画面外にいても呼び戻される
+  if (ev.kind === 'massage') {
+    S.breathTimer = rand(0.8, 2);
+    addComment('sc', pick(ev.partnerLines), ev.partner);
+    if (S.phase === 'idle') S.attackTimer = rand(ev.firstAttack[0], ev.firstAttack[1]);
+  }
+  // 封印された刺激の効果中なら、その場で打ち切る
+  if (S.phase === 'awake' && sealed(S.awakeStim)) { S.phase = 'idle'; S.awakeStim = null; S.awakeLeft = 0; S.bathEnterLeft = 0; scheduleAttack(); }
+  if (ev.board) el.toraBoard.innerHTML = ev.board.join('<br>');
 }
 function endSpecial() {
   const ev = S.special.ev;
   S.special = null;
+  el.guestSpeech.classList.remove('show');
   if (S.phase !== 'limit') say(ev.endLine, 2);
-  addComment('sys', '── 整体タイム終了 ──');
+  addComment('sys', ev.endComment);
+}
+// 虎・ダメ出し：相手がしゃべり、少しあとに堀が言い返す
+function specialTalk(dt) {
+  const sp = S.special, ev = sp.ev;
+  if (sp.replyTimer > 0 && (sp.replyTimer -= dt) <= 0 && S.phase !== 'limit' && S.phase !== 'rising') {
+    say(pick(ev.horiLines), 1.8, ev.kind === 'critic' ? 2 : 0);
+  }
+  if (sp.guestLeft > 0 && (sp.guestLeft -= dt) <= 0) el.guestSpeech.classList.remove('show');
+  if ((sp.lineTimer -= dt) > 0) return;
+  sp.lineTimer = ev.lineInterval;
+  let line = pick(ev.partnerLines);
+  if (line === sp.last) line = pick(ev.partnerLines);
+  sp.last = line;
+  el.guestSpeech.innerHTML = `<b>${ev.partner}</b>`;
+  el.guestSpeech.append(line);
+  el.guestSpeech.classList.add('show');
+  sp.guestLeft = Math.max(1.6, line.length * 0.13);
+  Voice.speak(line, 1.25);
+  addComment('sc', line, ev.partner);
+  if (ev.critMood) S.mood = clamp(S.mood + ev.critMood, 0, 100);
+  if (ev.critSleepy && (S.phase === 'idle' || S.phase === 'rising')) addSleepy(ev.critSleepy);
+  sp.replyTimer = sp.guestLeft;
 }
 
 /* ---------- 画面上の小演出 ---------- */
 function say(text, dur = 2, anger = 0) {
   el.speech.textContent = text;
+  Voice.speak(text);
   el.speech.className = 'show' + (anger >= 3 ? ' angry3' : anger === 2 ? ' angry2' : '');
-  S.speechLeft = dur;
+  S.speechLeft = Math.max(dur, text.length * 0.12);
 }
 function showBanner(text, dur) { el.banner.textContent = text; el.banner.classList.add('show'); S.bannerLeft = dur; }
 function showSuperchat(text) {
@@ -1382,7 +1593,8 @@ function burstComments(pool, cls, n) {
 }
 function ambientComment() {
   let pool = C.normal, cls = '';
-  if (S.special && S.phase !== 'awake') pool = C.massage; // 状態がバレないコメントだけ流す
+  if (massaging() && S.phase !== 'awake') pool = C.massage; // 状態がバレないコメントだけ流す
+  else if (S.special && S.phase !== 'limit' && Math.random() < 0.6) pool = C[S.special.ev.kind];
   else if (S.awayLeft > 0 && S.phase !== 'limit') pool = C.away;
   else if (S.phase === 'limit') { pool = C.limit; cls = 'bad'; }
   else if (S.angerLevel >= 3) { pool = C.insult3; cls = 'bad'; }
@@ -1399,7 +1611,7 @@ function ambientComment() {
 /* ---------- 表情 ---------- */
 function currentExpr() {
   if (S.ban) return { expr: 'banBath', ban: true, trunks: false, censor: 'steam', props: ['⁉️', ''] };
-  if (S.special) return { expr: S.phase === 'awake' ? 'massageAwake' : 'massage', props: ['', ''] };
+  if (massaging()) return { expr: S.phase === 'awake' ? 'massageAwake' : 'massage', props: ['', ''] };
   if (S.phase === 'limit') return { expr: 'limit', props: ['💤', ''] };
   if (S.angerLeft > 0 && S.angerLevel > 0) return { expr: 'angry' + S.angerLevel, props: [S.angerLevel >= 2 ? '💢💢' : '💢', ''] };
   if (S.phase === 'awake') {
@@ -1442,6 +1654,10 @@ function update(dt) {
 
   // 風呂のBAN危機中は時間を止める
   if (S.ban) {
+    if (S.ban.reveal > 0) { // 気づく演出の間はタイマーを減らさない
+      if ((S.ban.reveal -= dt) <= 0) { el.banLayer.classList.add('urgent'); el.banSub.textContent = '映る！！今すぐ隠せ！！'; Sound.play('ban'); }
+      return;
+    }
     S.ban.left -= dt;
     el.banFill.style.width = clamp(S.ban.left / CONFIG.bath.banTimeLimit, 0, 1) * 100 + '%';
     if (S.ban.left <= 0) gameOver('ban');
@@ -1476,7 +1692,7 @@ function update(dt) {
     case 'limit':
       S.graceLeft -= dt;
       S.heartTimer -= dt;
-      if (S.special) {
+      if (massaging()) {
         // マッサージ中はいびきでしか寝落ちが分からない
         S.snoreTimer -= dt;
         if (S.snoreTimer <= 0) { Sound.play('snore'); say('ぐごごご…', 0.5); S.snoreTimer = S.special.ev.snoreInterval; }
@@ -1504,9 +1720,11 @@ function update(dt) {
   if (S.pendingEvent) {
     S.pendingEvent.left -= dt;
     if (S.pendingEvent.left <= 0) { const ev = S.pendingEvent.ev; S.pendingEvent = null; applyEvent(ev); scheduleEvent(); }
-  } else if (S.special) {
+  } else if (massaging()) {
     // 起きていても寝かけていても、同じ寝息を立てる
     if (S.phase !== 'limit' && (S.breathTimer -= dt) <= 0) { say('すー…すー…', 0.9); S.breathTimer = rand(1.5, 3); }
+  } else if (S.special) {
+    specialTalk(dt);
   } else if (S.phase !== 'limit') {
     S.eventTimer -= dt * (1 + CONFIG.events.fatiguePerDay * (S.day - 1));
     if (S.eventTimer <= 0) announceEvent();
@@ -1543,13 +1761,14 @@ function render() {
     const B = btns[s.id], u = S.uses[s.id], cd = S.cd[s.id] || 0;
     B.rm.textContent = u === null || u === undefined ? '∞' : (u === 0 ? '使用済み' : `残り ${u}/${s.uses}`);
     B.b.classList.toggle('empty', u === 0);
+    B.b.classList.toggle('sealed', sealed(s.id));
     B.b.classList.toggle('cooling', cd > 0);
     B.cd.style.height = s.cooldown > 0 ? (cd / s.cooldown) * 100 + '%' : '0';
     B.cdt.textContent = cd > 0 ? cd.toFixed(1) : '';
   });
 
   // 配信画面の演出
-  const hideSleep = !!S.special; // マッサージ中は眠さを画面に出さない
+  const hideSleep = massaging(); // マッサージ中は眠さを画面に出さない
   const limit = S.phase === 'limit' && playingLike && !hideSleep;
   const sl = playingLike && !hideSleep ? S.sleepy : 0;
   const ef = CONFIG.effects;
@@ -1563,12 +1782,15 @@ function render() {
   const lidH = limit ? 8 + 42 * (1 - clamp(S.graceLeft / S.graceTotal, 0, 1)) : 0;
   el.lidTop.style.height = el.lidBot.style.height = lidH + '%';
   el.futon.classList.toggle('show', S.futonLeft > 0);
-  if (!S.ban) el.steam.className = 'ov' + (S.phase === 'awake' && S.awakeStim === 'bath' && !S.special ? ' on' : '');
+  if (!S.ban) el.steam.className = 'ov' + (S.phase === 'awake' && S.awakeStim === 'bath' && !massaging() ? ' on' : '');
   el.collabWin.classList.toggle('show', S.phase === 'awake' && S.awakeStim === 'collab');
 
   const ex = currentExpr();
   const pose = FACE[ex.expr].pose;
-  el.stage.dataset.scene = pose === 'bath' || pose === 'enter' ? 'bath' : pose === 'massage' ? 'massage' : (lk.room || 'kitchen');
+  const gk = S.special && !massaging() && playingLike && pose === 'stand' ? S.special.ev.kind : '';
+  el.guest.dataset.kind = gk; el.guest.classList.toggle('show', !!gk);
+  el.stream.classList.toggle('withGuest', !!gk);
+  el.stage.dataset.scene = pose === 'bath' || pose === 'enter' ? 'bath' : pose === 'massage' ? 'massage' : gk === 'tora' ? 'tora' : (lk.room || 'kitchen');
   const props = lk.noZzz ? ex.props.map(x => (x === '💤' ? '' : x)) : ex.props;
   hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, props });
 }
@@ -1583,7 +1805,7 @@ function loop(now) {
 }
 
 /* ---------- 入力 ---------- */
-function onStart(fromDay = 1) { Sound.unlock(); newGame(fromDay); }
+function onStart(fromDay = 1) { Sound.unlock(); Voice.unlock(); newGame(fromDay); }
 $('#startBtn').addEventListener('click', () => onStart(1));
 $('#retryBtn').addEventListener('click', () => onStart(S.day));
 $('#retryFromStart').addEventListener('click', () => onStart(1));
@@ -1595,6 +1817,7 @@ el.oke.addEventListener('pointerdown', e => { e.preventDefault(); hideOke(); });
 el.mute.addEventListener('click', () => {
   Sound.muted = !Sound.muted; Sound.unlock();
   storage.set(CONFIG.storageKeys.muted, Sound.muted ? '1' : '0');
+  Bgm.setMuted(Sound.muted); if (Sound.muted) Voice.stop();
   el.mute.textContent = Sound.muted ? '🔇' : '🔊';
 });
 el.mute.textContent = Sound.muted ? '🔇' : '🔊';
