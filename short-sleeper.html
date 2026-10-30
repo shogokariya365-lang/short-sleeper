@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ショートスリーパー 1週間配信チャレンジ</title>
+<script>
+/* =====================================================================
+ * CONFIG — ゲームバランスの数値はすべてここで調整する
+ * ===================================================================== */
+const CONFIG = {
+  totalDays: 7,
+  dayLength: 60,            // 1日の配信時間（秒）
+  dayStartDuration: 2.8,    // 「Day N 配信開始！」演出の長さ（秒）
+  napDuration: 2.6,         // 仮眠演出の長さ（秒）
+  napFirstAttackBonus: 2.0, // 仮眠の回復分：翌日の最初の発作が来るまでの時間に足す秒数（全回復はしない）
+
+  // 画面上の時計：1日の60秒を、配信開始〜終了の時刻に割り当てる（24時をまたいでOK）
+  clock: { startHour: 20, endHour: 6 },
+
+  // 全体の難易度つまみ（1 = 下の表どおり。1.2 で約2割むずかしく、0.8 で約2割やさしく）
+  //   発作間隔・猶予を ÷difficulty、眠気上昇速度を ×difficulty する
+  difficulty: 1.0,
+
+  // 4-5 日ごとの難易度（その日の開始時点の値）
+  //   attackMin/Max : 眠気発作の間隔（秒、ランダム幅）
+  //   riseSpeed     : 発作中の眠気上昇速度（/秒）
+  //   grace         : 限界ゾーンの猶予（秒）
+  days: [
+    { attackMin: 4,   attackMax: 7,   riseSpeed: 20, grace: 1.8 },
+    { attackMin: 3.5, attackMax: 6.5, riseSpeed: 23, grace: 1.6 },
+    { attackMin: 3,   attackMax: 6,   riseSpeed: 26, grace: 1.45 },
+    { attackMin: 3,   attackMax: 6,   riseSpeed: 29, grace: 1.3 },
+    { attackMin: 2.5, attackMax: 5.5, riseSpeed: 33, grace: 1.15 },
+    { attackMin: 2,   attackMax: 5,   riseSpeed: 37, grace: 1.0 },
+    { attackMin: 1.5, attackMax: 4.5, riseSpeed: 42, grace: 0.85 },
+  ],
+
+  // 4-6 1日の中での難易度上昇（0秒時点 ×1.0 → 60秒時点 ×endFactor へ直線的に変化）
+  inDay: {
+    attackEndFactor: 0.6, // 発作間隔の終盤倍率
+    graceEndFactor: 0.6,  // 猶予の終盤倍率
+    minGrace: 0.4,        // 猶予の最低値（秒）
+    lastSpurt: 10,        // 残り何秒で時計を赤点滅させるか
+  },
+
+  // 4-3 フライング（限界ゾーン前に刺激を入れた場合）
+  flying: {
+    sleepyKeep: 0.5,   // 眠気をこの割合まで下げる（0.5 = 半分）
+    awakeFactor: 0.5,  // 覚醒時間の倍率
+  },
+
+  // 5 刺激（データ配列。key はPCのキー割り当て）
+  //   uses: 1日の使用回数（null = 無制限） / cooldown: 秒
+  //   riseDuringAwake: 覚醒中も眠気が上がる倍率（0 = 上がらない）
+  stimuli: [
+    { id: 'insult',  key: '1', name: '悪口スパチャ', icon: '💸', awakeMin: 2,  awakeMax: 4,  uses: null, cooldown: 1.5, riseDuringAwake: 0,   mood: -10 },
+    { id: 'workout', key: '2', name: '筋トレ',       icon: '💪', awakeMin: 2,  awakeMax: 6,  uses: 3,    cooldown: 3,   riseDuringAwake: 0.5, mood: 0 },
+    { id: 'bath',    key: '3', name: '風呂',         icon: '🛁', awakeMin: 4,  awakeMax: 8,  uses: 3,    cooldown: 4,   riseDuringAwake: 0,   mood: 0 },
+    { id: 'collab',  key: '4', name: 'コラボ',       icon: '🤝', awakeMin: 15, awakeMax: 15, uses: 1,    cooldown: 0,   riseDuringAwake: 0,   mood: 40 },
+  ],
+
+  insult: {
+    limit: 4,          // この回数連続で使うと配信終了
+    angerShowTime: 2.0 // 怒り顔を見せる秒数
+  },
+  bath: {
+    banChance: 0.2,     // 水着を履き忘れる（BAN危機）確率。残りは水着を着て入る
+    banTimeLimit: 1.0,  // 「スタンプで隠せ！」の制限時間（秒）
+    enterDuration: 1.2, // 湯船に入るアニメーションの長さ（秒）
+  },
+  collab: {
+    attackIntervalBonus: 1.25, // 疲労の少し回復：その日の残りの発作間隔に掛ける倍率
+  },
+
+  // 4-7 機嫌
+  mood: { initial: 70, low: 30, high: 85 },
+
+  // 4-4 ランダムイベント（データ配列）
+  //   effect.type: add（眠気+amount） / speed（duration秒間、上昇速度×mult） / attack（即座に発作）
+  events: {
+    firstDelay: 3,       // 1日の開始から最初のイベントまでの最短秒数
+    intervalMin: 5,      // イベント間隔（秒）
+    intervalMax: 10,
+    fatiguePerDay: 0.15, // 疲労（Day）が1上がるごとの発生頻度アップ率
+    warnTime: 1.3,       // 予告してから効果が出るまでの秒数
+    list: [
+      { id: 'asmr',     weight: 1, banner: '🎧 視聴者「ASMRやって〜」', comment: 'ASMRやって〜',      hori: 'え、ささやき声で…？ふぁ…', effect: { type: 'add', amount: 20 } },
+      { id: 'midnight', weight: 1, banner: '🌙 深夜の静かな時間帯…',     comment: 'みんな寝た…？',      hori: 'なんか…静かやな…',        effect: { type: 'speed', mult: 2, duration: 5 } },
+      { id: 'full',     weight: 1, banner: '🍜 夜食を食べて満腹',         comment: '飯テロやめろw',      hori: '夜食うまっ…おなかいっぱい…', effect: { type: 'attack' } },
+      { id: 'longtext', weight: 1, banner: '📜 長文コメントの読み上げ',   comment: '長文失礼します。堀さんの配信を初めて見たのは3年前の…', hori: 'えー、読みますね…「長文失礼します」…', effect: { type: 'add', amount: 15 } },
+      { id: 'futon',    weight: 1, banner: '🛏️ 布団が視界に入った',      comment: '後ろの布団ふかふかそう', hori: '布団…いや見てない見てない', effect: { type: 'add', amount: 10 } },
+    ],
+  },
+
+  // 突発イベント（決まった日に1回、ランダムな時刻に発生。データ配列で追加できる）
+  //   at: 発生する時刻（1日の経過秒の範囲） / duration: 続く秒数
+  //   riseMult: 眠気上昇速度の倍率 / attackMult: 発作間隔の倍率 / firstAttack: 開始から最初の発作までの秒数
+  specialEvents: [
+    { id: 'massage', day: 2, at: [12, 34], duration: 18, riseMult: 3, attackMult: 0.3, firstAttack: [0.3, 2.0],
+      banner: '💆 突然の整体タイム！', partner: '整体師・もみ山さん',
+      partnerLines: ['はーい、ほぐしていきますね〜', '首こってますね〜', 'ここ効きますよ〜'],
+      endLine: 'うわ、めっちゃ体軽なったわ！',
+      snoreInterval: 0.6 },
+  ],
+
+  // 日ごとの堀の見た目（目が見えにくくなるほど難しい）
+  //   eyepatch: 眼帯（片目が隠れる） / sunglasses: サングラス / eggChair: 卵型の椅子に座る / eyesShut: 目が開いていない
+  //   room: 背景（kitchen / curtain） / screenCue: 眠気で画面が暗く・ぼやける演出の強さ（1 = 通常）
+  //   noZzz: 💤マークを出さない / leave: 画面外に消える（interval: 消えるまでの秒数、away: 消えている秒数）
+  //   note: Day開始画面の説明
+  looks: [
+    {},
+    {},
+    { eyepatch: true, screenCue: 0.8, note: '眼帯をつけている…（片目しか見えない）' },
+    { sunglasses: true, room: 'curtain', screenCue: 0.6, noZzz: true, note: 'サングラスで目が見えない…' },
+    { sunglasses: true, room: 'curtain', screenCue: 0.5, noZzz: true, note: 'サングラス＋落ち着きがない（よく画面から消える）',
+      leave: { intervalMin: 4, intervalMax: 9, awayMin: 2, awayMax: 4.5 } },
+    { eggChair: true, eyesShut: true, room: 'curtain', screenCue: 0.4, noZzz: true, note: '卵型チェアでくつろぎモード…そもそも目が開いてない' },
+    { eggChair: true, eyesShut: true, room: 'curtain', screenCue: 0.4, noZzz: true, note: '卵型チェアでくつろぎモード…そもそも目が開いてない' },
+  ],
+
+  // 7 目の下のクマ（Day1〜7）。opacity: 不透明度 / scale: 大きさ
+  //   bloodshot: 目の充血 / pale: 顔色が悪い / hollow: 目が虚ろ
+  kuma: [
+    { opacity: 0,    scale: 0.8 },
+    { opacity: 0.25, scale: 0.9 },
+    { opacity: 0.4,  scale: 1.0 },
+    { opacity: 0.55, scale: 1.1 },
+    { opacity: 0.7,  scale: 1.2, bloodshot: true },
+    { opacity: 0.82, scale: 1.3, bloodshot: true, pale: true },
+    { opacity: 0.95, scale: 1.4, bloodshot: true, pale: true, hollow: true },
+  ],
+
+  // 背景の空と部屋の明るさ（p = 1日の進み具合 0〜1）。stars: 星の濃さ / dim: 部屋の暗さ
+  sky: [
+    { p: 0,    top: '#3b2a6b', bottom: '#f08a5d', stars: 0,   dim: 0.05 },
+    { p: 0.15, top: '#1d2150', bottom: '#6a4a8a', stars: 0.3, dim: 0.18 },
+    { p: 0.35, top: '#0b1030', bottom: '#1b2350', stars: 1,   dim: 0.32 },
+    { p: 0.65, top: '#060918', bottom: '#121838', stars: 1,   dim: 0.38 },
+    { p: 0.85, top: '#1d2350', bottom: '#6a4f86', stars: 0.4, dim: 0.25 },
+    { p: 1,    top: '#6aa7d8', bottom: '#ffc48a', stars: 0,   dim: 0.06 },
+  ],
+
+  // 画面演出
+  effects: {
+    vignetteMax: 0.85, // 眠気100%時のビネットの濃さ
+    blurStart: 60,     // この眠気からぼやけ始める
+    blurMax: 1.6,      // 最大ぼかし(px)
+    swayStart: 75,     // この眠気から画面が揺れ始める
+    heartInterval: 0.45,
+  },
+
+  comments: { intervalMin: 0.5, intervalMax: 1.3, max: 40 },
+
+  storageKeys: { bestDay: 'shortSleeper.bestDay', clearedDay: 'shortSleeper.clearedDay', muted: 'shortSleeper.muted' },
+};
+
+/* =====================================================================
+ * ASSETS — 画像の指定はここに集約。null の間は図形（SVGのミニキャラ）・絵文字で仮表示する
+ *   例: hori.normal: 'img/hori_normal.png'（全身のミニキャラ、背景透過）
+ * ===================================================================== */
+const ASSETS = {
+  hori: {
+    normal: null, sleepy: null, limit: null, angry: null,
+    workout: null, bath: null, happy: null, massage: null,
+  },
+  collabPartner: null,   // コラボ相手の画像
+  background: null,      // 配信部屋の背景画像（指定すると時刻による空の変化は使わない）
+  // 画像に差し替えたとき、クマレイヤーを重ねる位置（立ち絵の枠に対する%）。画像に合わせて調整する
+  kumaLayout: { y: '38%', leftX: '36%', rightX: '54%', w: '10%', h: '4%' },
+  // 画像がないときの仮表示（絵文字）
+  fallback: { collabPartner: '🐥' },
+};
+</script>
+<style>
+:root{
+  --bg:#15121d; --panel:#211c2e; --panel2:#2b2540; --ink:#f4effc; --sub:#a79fc0;
+  --accent:#ff4d6d; --ok:#4ade80; --warn:#fbbf24;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
+
+#app{height:100vh;height:100dvh;max-width:1100px;margin:0 auto;display:flex;flex-direction:column;
+  padding:max(6px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom));gap:6px}
+
+/* ---------- HUD ---------- */
+#hud{display:grid;grid-template-columns:auto 1fr 1fr auto;gap:10px;align-items:center;background:var(--panel);
+  border-radius:14px;padding:6px 10px}
+#hudDay{font-weight:800;font-size:18px;white-space:nowrap}
+#hudDay small{font-size:12px;color:var(--sub);font-weight:600}
+.gauge{font-size:11px;color:var(--sub);min-width:0}
+.gauge .lab{display:flex;justify-content:space-between;margin-bottom:2px;white-space:nowrap}
+.gauge .lab b{color:var(--ink);font-variant-numeric:tabular-nums}
+.bar{position:relative;height:10px;background:#0d0b13;border-radius:6px;overflow:hidden}
+.bar>i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;transition:width .1s linear}
+#gMood>i{background:linear-gradient(90deg,#f97316,#facc15,#4ade80)}
+#gFatigue>i{background:linear-gradient(90deg,#64748b,#a855f7)}
+#muteBtn{background:var(--panel2);border:none;border-radius:10px;width:40px;height:36px;font-size:18px}
+@keyframes blink{50%{opacity:.25}}
+
+/* ---------- メイン（配信画面＋コメント） ---------- */
+#main{flex:1;min-height:0;display:flex;gap:6px}
+#stream{position:relative;flex:1;min-width:0;border-radius:14px;overflow:hidden;background:#000}
+#stage{position:absolute;inset:0;background:#2a2140;transition:filter .2s}
+#stage.has-bg{background-size:cover;background-position:center}
+#stage.has-bg .scene{display:none!important}
+.scene{position:absolute;inset:0;width:100%;height:100%}
+.scene{display:none}
+#stage[data-scene=kitchen] .kitchen,#stage[data-scene=curtain] .curtain,
+#stage[data-scene=bath] .bathroom,#stage[data-scene=massage] .salon{display:block}
+.sky-top{stop-color:var(--sky-top,#0b1030)}
+.sky-bot{stop-color:var(--sky-bot,#1b2350)}
+.stars{opacity:var(--stars,1)}
+.room-dim{opacity:var(--dim,.3)}
+#futonProp{position:absolute;left:4%;bottom:4%;font-size:clamp(28px,7vw,56px);opacity:0;transition:opacity .5s;z-index:2}
+#futonProp.show{opacity:1}
+#live{position:absolute;right:10px;top:10px;background:var(--accent);color:#fff;font-weight:800;font-size:12px;
+  padding:3px 8px;border-radius:6px;z-index:20;letter-spacing:.05em}
+#live::before{content:"●";margin-right:4px;animation:blink 1s steps(2) infinite}
+#horiWrap{position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:88%;aspect-ratio:200/250;transition:left .7s ease-in-out}
+#horiWrap.gone{left:-70%}
+#stage.sway #horiWrap{animation:sway 2.2s ease-in-out infinite}
+#stream.shake{animation:shake .12s linear infinite}
+@keyframes sway{0%,100%{transform:translateX(-50%) rotate(0)}30%{transform:translateX(-52%) rotate(-3deg)}70%{transform:translateX(-48%) rotate(3deg)}}
+@keyframes shake{0%{transform:translate(0,0)}25%{transform:translate(-3px,2px)}50%{transform:translate(3px,-2px)}75%{transform:translate(-2px,-3px)}100%{transform:translate(2px,3px)}}
+
+/* アナログ時計（左上） */
+#clock{position:absolute;left:8px;top:8px;width:clamp(58px,15vw,84px);z-index:20;text-align:center}
+#clock svg{width:100%;display:block;filter:drop-shadow(0 2px 4px #0008)}
+#clock .face{fill:#fff8ee;stroke:#3b2321;stroke-width:5}
+#clock .tick{stroke:#3b2321;stroke-width:2.5;stroke-linecap:round}
+#clock .num{font-size:15px;font-weight:800;fill:#3b2321;text-anchor:middle;dominant-baseline:central}
+#clock .hand{stroke:#3b2321;stroke-linecap:round}
+#clock .arc{fill:none;stroke:#ff4d6d;stroke-width:7;opacity:.45}
+#clockText{margin-top:2px;font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums}
+#clock.spurt .face{stroke:#ff4d6d;animation:blink .5s steps(2) infinite}
+#clock.spurt .arc{opacity:1}
+#clock.spurt #clockText{color:#ff6b81}
+
+/* ---------- 堀 大好き（SVGのミニキャラ／画像差し替え対応） ---------- */
+.hori{position:relative;width:100%;height:100%;--skin:#e9b48c;--line:#3b2321}
+.hori .hori-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.hori.has-img .chibi{display:none}
+.hori .kuma-ov{position:absolute;display:none;border-radius:50%;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 40%,rgba(60,20,80,1) 0%,rgba(60,20,80,.7) 40%,rgba(60,20,80,0) 72%);
+  opacity:var(--kuma-op,0);transform:scale(var(--kuma-sc,1))}
+.hori.has-img .kuma-ov{display:block}
+.chibi{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.chibi .o{stroke:var(--line);stroke-width:2.5}
+.chibi .sk{fill:var(--skin)}
+.chibi .limb{fill:none;stroke:var(--skin);stroke-linecap:round;stroke-linejoin:round}
+.chibi .limb-o{fill:none;stroke:var(--line);stroke-linecap:round;stroke-linejoin:round}
+.chibi .st{fill:none;stroke:var(--line);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.chibi .br{fill:none;stroke:#1d1516;stroke-width:3.6;stroke-linecap:round}
+.chibi .br.thick{stroke-width:5}
+.chibi .musc{fill:none;stroke:#b8794f;stroke-width:1.6;stroke-linecap:round}
+.chibi .hair{fill:#1d1516;stroke:var(--line);stroke-width:2.5;stroke-linejoin:round}
+.chibi .ew{fill:#fff}
+.chibi .ewo{fill:none;stroke:var(--line);stroke-width:2.2}
+.chibi .ep{fill:#2a1c1c;transform-box:fill-box;transform-origin:center;transition:transform .2s}
+.chibi .eh{fill:#fff}
+.chibi .veins{stroke:#e04545;stroke-width:.9;fill:none;display:none}
+.hori.bloodshot .veins{display:inline}
+.hori.bloodshot .ew{fill:#ffe6e6}
+.hori.hollow .ep{fill:#5a5160;transform:scale(.72)}
+.hori.anger3 .ep{transform:scale(.6)}
+.chibi .lid{transform:scaleY(var(--lid,0));transform-box:fill-box;transform-origin:50% 0;transition:transform .15s}
+.chibi .lidline{fill:none;stroke:var(--line);stroke-width:2.2;transform:translateY(calc(var(--lid,0) * 22px));transition:transform .15s}
+.chibi .kuma-s{fill:#4a1f5c;opacity:var(--kuma-op,0);transform:scale(var(--kuma-sc,1));transform-box:fill-box;transform-origin:50% 30%}
+.chibi .cheek{fill:#ff8080;opacity:.55}
+.chibi .tilt{transform-box:fill-box;transform-origin:50% 95%;transition:transform .3s}
+.hori.pale{--skin:#d8c2b2}
+.hori.flush{--skin:#f2a383}
+.hori.anger3{--skin:#ee8c72}
+.hori.expr-sleepy .tilt{transform:rotate(7deg)}
+.hori.expr-limit .tilt{animation:nod 1.4s ease-in-out infinite}
+@keyframes nod{0%,100%{transform:rotate(12deg)}50%{transform:rotate(20deg) translateY(4px)}}
+.hori .breathe{transform-box:fill-box;transform-origin:50% 100%;animation:breathe 3s ease-in-out infinite}
+@keyframes breathe{50%{transform:scaleY(1.012)}}
+.hori .curlL,.hori .curlR{transform-box:fill-box;transform-origin:50% 0}
+.hori .curlL{animation:curlL 1.1s ease-in-out infinite}
+.hori .curlR{animation:curlR 1.1s ease-in-out infinite .55s}
+@keyframes curlL{0%,100%{transform:rotate(0)}50%{transform:rotate(-145deg)}}
+@keyframes curlR{0%,100%{transform:rotate(0)}50%{transform:rotate(145deg)}}
+/* 湯船に入るアニメーション（横から片足で湯船をまたいで沈む） */
+.hori .enter{animation:enter var(--enter-dur,1.2s) ease-in-out forwards}
+.hori .legR{transform-box:fill-box;transform-origin:50% 0;animation:stepIn var(--enter-dur,1.2s) ease-in-out forwards}
+@keyframes enter{0%{transform:translate(-34px,-24px)}25%{transform:translate(-18px,-34px)}55%{transform:translate(0,-28px)}100%{transform:translate(0,100px)}}
+@keyframes stepIn{0%{transform:rotate(0)}20%,55%{transform:rotate(-50deg)}100%{transform:rotate(0)}}
+.hori.ban .enter{animation:none;transform:translate(-18px,-30px)}
+.hori.naked .enter{animation-name:enterNaked}
+@keyframes enterNaked{0%{transform:translate(-18px,-30px)}45%{transform:translate(0,-24px)}100%{transform:translate(0,100px)}}
+.hori.ban .legR{animation:none;transform:rotate(-40deg)}
+.hori.look-r .ep{translate:2.5px 0}
+.hori .censor-steam{animation:puff .4s ease-in-out infinite alternate}
+@keyframes puff{to{transform:scale(1.08)}}
+.hori .ripple{animation:ripple 2s ease-in-out infinite alternate}
+@keyframes ripple{to{transform:translateX(-6px)}}
+.hori .prop{position:absolute;z-index:6;pointer-events:none;line-height:1;font-size:clamp(20px,6vw,44px)}
+.hori .prop.a{right:2%;top:4%}.hori .prop.c{left:0;top:26%}
+.hori .prop:empty{display:none}
+
+/* 配信画面のオーバーレイ */
+.ov{position:absolute;inset:0;pointer-events:none}
+#vignette{background:radial-gradient(ellipse at center,transparent 35%,rgba(0,0,0,.95) 100%);opacity:0;z-index:10}
+#darken{background:#000;opacity:0;z-index:11;transition:opacity .2s}
+#lidTop,#lidBot{position:absolute;left:-5%;width:110%;height:0;background:#0a0710;z-index:12}
+#lidTop{top:0;border-radius:0 0 50% 50%/0 0 30% 30%}
+#lidBot{bottom:0;border-radius:50% 50% 0 0/30% 30% 0 0}
+#flash{background:#fff;opacity:0;z-index:30}
+#flash.go{animation:flash .45s ease-out}
+@keyframes flash{0%{opacity:.9}100%{opacity:0}}
+#steam{z-index:8;opacity:0;transition:opacity .4s;
+  background:radial-gradient(circle at 20% 80%,rgba(255,255,255,.75),transparent 35%),
+             radial-gradient(circle at 70% 70%,rgba(255,255,255,.7),transparent 38%),
+             radial-gradient(circle at 45% 95%,rgba(255,255,255,.85),transparent 40%),
+             radial-gradient(circle at 85% 30%,rgba(255,255,255,.4),transparent 30%)}
+#steam.on{opacity:.5;animation:steam 2s ease-in-out infinite alternate}
+#steam.heavy{opacity:.92}
+@keyframes steam{to{transform:translateY(-4%) scale(1.05)}}
+#warnMarks{position:absolute;inset:0;z-index:14;display:none;font-size:clamp(28px,8vw,60px)}
+#warnMarks span{position:absolute;animation:blink .2s steps(2) infinite}
+#speech{position:absolute;left:50%;top:4%;transform:translateX(-50%);max-width:62%;background:#fff;color:#222;
+  font-weight:700;font-size:clamp(12px,3.2vw,17px);padding:6px 12px;border-radius:14px;z-index:15;opacity:0;transition:opacity .2s;text-align:center}
+#speech.show{opacity:1}
+#speech.angry2{background:#ffe1e1}
+#speech.angry3{background:#ff6b6b;color:#fff;font-size:clamp(14px,3.8vw,20px)}
+#speech::after{content:"";position:absolute;left:50%;bottom:-8px;margin-left:-6px;border:8px solid transparent;border-top-color:#fff;border-bottom:none}
+#speech.angry2::after{border-top-color:#ffe1e1}
+#speech.angry3::after{border-top-color:#ff6b6b}
+#banner{position:absolute;left:50%;bottom:6%;transform:translateX(-50%) scale(.8);background:rgba(20,15,35,.88);
+  border:2px solid var(--warn);color:var(--warn);font-weight:800;font-size:clamp(12px,3.2vw,16px);padding:6px 12px;border-radius:10px;
+  z-index:16;opacity:0;transition:all .2s;white-space:nowrap}
+#banner.show{opacity:1;transform:translateX(-50%) scale(1)}
+#superchat{position:absolute;right:8px;top:30%;max-width:58%;background:#e62e4d;color:#fff;border-radius:10px;overflow:hidden;
+  z-index:16;font-size:clamp(11px,2.8vw,14px);opacity:0;transform:translateX(30px);transition:all .25s}
+#superchat.show{opacity:1;transform:none}
+#superchat .sc-h{background:#c4163a;padding:3px 8px;font-weight:800}
+#superchat .sc-b{padding:4px 8px;font-weight:700}
+#collabWin{position:absolute;right:8px;bottom:8px;width:28%;aspect-ratio:1;background:linear-gradient(160deg,#ffe36e,#ff9a3c);
+  border:3px solid #fff;border-radius:12px;z-index:9;display:none;align-items:center;justify-content:center;flex-direction:column;
+  font-size:clamp(28px,8vw,60px);animation:bounce .6s ease-in-out infinite alternate}
+#collabWin img{width:100%;height:100%;object-fit:cover}
+#collabWin small{font-size:clamp(8px,2vw,12px);font-weight:800;color:#5a2a00;text-align:center;line-height:1.2}
+#collabWin.show{display:flex}
+@keyframes bounce{to{transform:translateY(-4px)}}
+
+/* コメント欄 */
+#comments{width:290px;background:var(--panel);border-radius:14px;display:flex;flex-direction:column;overflow:hidden}
+#comments h3{font-size:12px;color:var(--sub);padding:6px 10px;border-bottom:1px solid #ffffff14}
+#commentList{flex:1;overflow:hidden;list-style:none;padding:4px 8px;display:flex;flex-direction:column;justify-content:flex-end;gap:3px}
+#commentList li{font-size:13px;line-height:1.35;word-break:break-all;animation:cin .2s ease-out}
+#commentList li b{color:var(--sub);font-weight:600;margin-right:6px}
+#commentList li.hype{color:#fde047;font-weight:700}
+#commentList li.bad{color:#fca5a5}
+#commentList li.sc{background:#e62e4d;color:#fff;border-radius:6px;padding:2px 6px}
+#commentList li.sc b{color:#ffd5dc}
+#commentList li.sys{color:#93c5fd;font-weight:700}
+@keyframes cin{from{opacity:0;transform:translateY(6px)}}
+
+/* 刺激ボタン */
+#controls{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.stim{position:relative;overflow:hidden;min-height:68px;border:none;border-radius:14px;background:var(--panel2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:4px 2px;
+  border-bottom:4px solid #0003;transition:transform .05s}
+.stim:active{transform:translateY(2px)}
+.stim .ic{font-size:26px;line-height:1}
+.stim .nm{font-size:12px;font-weight:800;white-space:nowrap}
+.stim .rm{font-size:11px;color:var(--sub);font-variant-numeric:tabular-nums}
+.stim .ky{position:absolute;left:6px;top:4px;font-size:10px;color:var(--sub)}
+.stim .cd{position:absolute;left:0;right:0;bottom:0;height:0;background:rgba(0,0,0,.6);pointer-events:none}
+.stim .cdt{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:22px;font-weight:900;
+  text-shadow:0 0 6px #000;pointer-events:none}
+.stim.cooling .cdt{display:flex}
+.stim.empty{opacity:.35}
+.stim.empty .rm{color:var(--accent)}
+.stim[data-id=insult]{background:#3b2131}
+.stim[data-id=workout]{background:#21313b}
+.stim[data-id=bath]{background:#213b39}
+.stim[data-id=collab]{background:#3b3621}
+
+/* 全画面スクリーン */
+.screen{position:fixed;inset:0;z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;padding:24px;text-align:center;background:rgba(10,8,16,.94)}
+.screen.show{display:flex}
+.screen h1{font-size:clamp(26px,7vw,46px);line-height:1.2;font-weight:900}
+.screen h2{font-size:clamp(20px,5vw,32px);font-weight:900}
+.screen p{color:var(--sub);font-size:14px;line-height:1.7}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:999px;font-size:18px;font-weight:800;padding:14px 36px;min-height:52px;
+  box-shadow:0 4px 0 #a31d3b}
+.btn.sub{background:var(--panel2);box-shadow:0 4px 0 #0006;font-size:15px;padding:10px 24px;min-height:44px}
+.howto{background:var(--panel);border-radius:14px;padding:12px 16px;text-align:left;font-size:13px;line-height:1.8;color:var(--ink);max-width:440px}
+.howto b{color:var(--warn)}
+#daySelect{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:440px}
+#daySelect p{width:100%;margin:0;font-size:12px}
+.dayBtn{background:var(--panel2);color:var(--ink);border:none;border-radius:999px;font-size:14px;font-weight:800;padding:8px 14px;min-height:40px}
+#titleHori{width:min(40vw,170px);aspect-ratio:200/250}
+#dayHori{width:min(52vw,220px);aspect-ratio:200/250}
+#dayKumaNote{color:#c4b5fd;font-weight:700;font-size:14px;min-height:1.4em;white-space:pre-line;line-height:1.7}
+#screenNap{background:#05040a}
+#screenNap .zzz{font-size:46px;animation:zzz 1.2s ease-in-out infinite}
+@keyframes zzz{50%{transform:translateY(-8px);opacity:.6}}
+#napBar{width:min(70vw,300px);height:8px;background:#ffffff1a;border-radius:4px;overflow:hidden}
+#napBar i{display:block;height:100%;width:0;background:#7c6cf0}
+.result{background:var(--panel);border-radius:14px;padding:12px 20px;font-size:14px;line-height:1.9}
+.result b{font-size:18px}
+#screenOver h1{color:var(--accent)}
+#screenClear h1{color:var(--warn)}
+
+/* BAN危機 */
+#banLayer{position:fixed;inset:0;z-index:90;display:none;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding:0 16px max(24px,env(safe-area-inset-bottom));background:rgba(255,200,0,.12)}
+#banLayer.show{display:flex}
+#banLayer .banTitle{position:absolute;top:18%;left:0;right:0;text-align:center;font-size:clamp(26px,8vw,52px);font-weight:900;color:#fff;
+  text-shadow:0 0 10px #f00,0 0 2px #000;animation:blink .2s steps(2) infinite}
+#okeBtn{width:min(92vw,460px);min-height:120px;border:none;border-radius:22px;background:#fbbf24;color:#3b2200;
+  font-size:clamp(26px,7vw,40px);font-weight:900;box-shadow:0 6px 0 #a16207;margin-bottom:10px}
+#okeBtn small{display:block;font-size:13px;font-weight:700}
+#banTimer{width:min(92vw,460px);height:12px;background:#0008;border-radius:6px;overflow:hidden}
+#banTimer i{display:block;height:100%;background:#ef4444;width:100%}
+
+/* 狭い画面（スマホ縦） */
+@media (max-width:760px){
+  #main{flex-direction:column}
+  #stream{flex:0 0 auto;aspect-ratio:1/1;max-height:52dvh;width:100%;margin:0 auto}
+  #comments{width:100%;flex:1;min-height:70px}
+  #comments h3{display:none}
+  #commentList li{font-size:12px}
+  #hudDay{font-size:16px}
+  .stim{min-height:72px}
+  .stim .ky{display:none}
+}
+@media (max-width:760px) and (max-height:640px){
+  #stream{max-height:44dvh}
+  .stim{min-height:60px}
+  .stim .ic{font-size:22px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="hud">
+    <div id="hudDay">Day <span id="dayNum">1</span><small>/7</small></div>
+    <div class="gauge"><div class="lab"><span>😊 機嫌</span><b id="moodVal">70</b></div><div class="bar" id="gMood"><i></i></div></div>
+    <div class="gauge"><div class="lab"><span>🥱 疲労</span><b id="fatVal">Lv.1</b></div><div class="bar" id="gFatigue"><i></i></div></div>
+    <button id="muteBtn" aria-label="ミュート切替">🔊</button>
+  </header>
+
+  <div id="main">
+    <div id="stream">
+      <div id="stage">
+        <!-- 背景：キッチン（窓の空と部屋の明るさが時刻で変わる） -->
+        <svg class="scene kitchen" viewBox="0 0 400 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+          <defs>
+            <linearGradient id="skyK" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sky-top"/><stop offset="1" class="sky-bot"/></linearGradient>
+            <clipPath id="winK"><rect x="268" y="98" width="88" height="78"/></clipPath>
+          </defs>
+          <rect width="400" height="300" fill="#e7dfd2"/>
+          <!-- 窓 -->
+          <g clip-path="url(#winK)">
+            <rect x="268" y="98" width="88" height="78" fill="url(#skyK)"/>
+            <g class="stars" fill="#fff"><circle cx="280" cy="108" r="1.2"/><circle cx="300" cy="120" r="1"/><circle cx="330" cy="106" r="1.3"/><circle cx="346" cy="128" r="1"/><circle cx="288" cy="140" r="0.9"/><circle cx="318" cy="134" r="1.1"/></g>
+            <g class="moon"><circle r="9" fill="#fff6c8"/><circle cx="4" cy="-3" r="8" fill="url(#skyK)" opacity=".0"/></g>
+            <g class="sun"><circle r="12" fill="#ffd36b"/><circle r="17" fill="#ffd36b" opacity=".3"/></g>
+            <path d="M268,168 h88 v8 h-88z" fill="#3d3550" opacity=".6"/>
+          </g>
+          <rect x="268" y="98" width="88" height="78" fill="none" stroke="#f4f1ea" stroke-width="5"/>
+          <path d="M312,98 V176 M268,137 H356" stroke="#f4f1ea" stroke-width="3"/>
+          <!-- 吊り戸棚 -->
+          <rect x="0" y="0" width="400" height="88" fill="#8b6a4b"/>
+          <path d="M80,0 V88 M160,0 V88 M240,0 V88 M320,0 V88" stroke="#6d5139" stroke-width="2"/>
+          <path d="M0,22 H400 M0,46 H400 M0,68 H400" stroke="#a07f5f" stroke-width="1" opacity=".5"/>
+          <rect x="0" y="88" width="400" height="4" fill="#5e4430"/>
+          <!-- 冷蔵庫 -->
+          <rect x="6" y="96" width="78" height="210" rx="6" fill="#dddbd5" stroke="#b9b6ae" stroke-width="2"/>
+          <path d="M6,170 H84" stroke="#b9b6ae" stroke-width="2"/>
+          <rect x="72" y="120" width="5" height="34" rx="2" fill="#a9a59c"/><rect x="72" y="182" width="5" height="40" rx="2" fill="#a9a59c"/>
+          <!-- 棚・キッチンペーパー・フライ返し -->
+          <rect x="98" y="182" width="70" height="6" rx="2" fill="#a07b55"/>
+          <rect x="108" y="188" width="24" height="28" rx="4" fill="#fafafa" stroke="#ccc"/>
+          <path d="M152,188 V214" stroke="#333" stroke-width="3"/><rect x="146" y="212" width="12" height="18" rx="3" fill="#333"/>
+          <!-- カウンター -->
+          <rect x="0" y="252" width="400" height="8" fill="#f2efe9"/><rect x="0" y="260" width="400" height="40" fill="#8b6a4b"/>
+          <rect x="296" y="226" width="22" height="26" rx="4" fill="#c9d6e0"/><rect x="324" y="232" width="30" height="20" rx="3" fill="#e9e3c9"/><rect x="360" y="220" width="12" height="32" rx="3" fill="#fff" stroke="#ccc"/>
+          <rect class="room-dim" width="400" height="300" fill="#120c26"/>
+        </svg>
+        <!-- 背景：風呂場 -->
+        <svg class="scene bathroom" viewBox="0 0 400 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+          <defs>
+            <pattern id="tile" width="26" height="26" patternUnits="userSpaceOnUse"><rect width="26" height="26" fill="#cfe6ef"/><path d="M0,0 H26 V26" fill="none" stroke="#a9cbd8" stroke-width="2"/></pattern>
+            <linearGradient id="skyB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sky-top"/><stop offset="1" class="sky-bot"/></linearGradient>
+          </defs>
+          <rect width="400" height="300" fill="url(#tile)"/>
+          <rect x="60" y="60" width="70" height="56" fill="url(#skyB)" stroke="#f4f1ea" stroke-width="5"/>
+          <g class="stars" fill="#fff"><circle cx="76" cy="74" r="1.1"/><circle cx="104" cy="70" r="1"/><circle cx="116" cy="92" r="1.2"/></g>
+          <path d="M60,88 H130" stroke="#f4f1ea" stroke-width="3"/>
+          <path d="M330,40 V90 Q330,100 320,100 H300" stroke="#99aaaa" stroke-width="5" fill="none"/><ellipse cx="300" cy="104" rx="14" ry="6" fill="#bcc"/>
+          <rect class="room-dim" width="400" height="300" fill="#120c26" style="opacity:calc(var(--dim,.3) * .5)"/>
+        </svg>
+        <!-- 背景：カーテンの部屋（隙間の空が時刻で変わる） -->
+        <svg class="scene curtain" viewBox="0 0 400 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+          <defs><linearGradient id="skyC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sky-top"/><stop offset="1" class="sky-bot"/></linearGradient></defs>
+          <rect width="400" height="300" fill="#e8e2d8"/>
+          <rect x="300" y="30" width="22" height="240" fill="url(#skyC)"/>
+          <g class="stars" fill="#fff"><circle cx="306" cy="60" r="1.2"/><circle cx="315" cy="100" r="1"/><circle cx="308" cy="140" r="1.1"/></g>
+          <rect x="70" y="24" width="320" height="8" rx="3" fill="#cfc6b6"/>
+          <path d="M80,30 H302 V270 H80 Z" fill="#e9dcc4"/>
+          <path d="M320,30 H400 V270 H320 Z" fill="#e9dcc4"/>
+          <path d="M100,32 V270 M126,32 V270 M152,32 V270 M178,32 V270 M204,32 V270 M230,32 V270 M256,32 V270 M282,32 V270 M340,32 V270 M366,32 V270" stroke="#d3c3a6" stroke-width="5"/>
+          <rect x="6" y="20" width="96" height="40" rx="6" fill="#f6f6f3" stroke="#cfcac0" stroke-width="2"/>
+          <path d="M14,48 H94" stroke="#bdb8ae" stroke-width="3"/>
+          <rect x="0" y="270" width="400" height="30" fill="#8b6a4b"/>
+          <rect class="room-dim" width="400" height="300" fill="#120c26"/>
+        </svg>
+        <!-- 背景：整体サロン -->
+        <svg class="scene salon" viewBox="0 0 400 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+          <rect width="400" height="300" fill="#efece6"/>
+          <rect x="250" y="0" width="70" height="300" fill="#f7f5f1" stroke="#ddd8cf" stroke-width="2"/>
+          <path d="M0,250 H400 V300 H0 Z" fill="#cfc6b8"/>
+          <g transform="translate(46 250)">
+            <path d="M-16,0 L-12,-34 H12 L16,0 Z" fill="#e6e1d8" stroke="#bdb5a8" stroke-width="2"/>
+            <g fill="#3f7a46" stroke="#2c5a32" stroke-width="1.5">
+              <path d="M0,-34 Q-40,-90 -52,-150 Q-14,-110 0,-34Z"/><path d="M0,-34 Q30,-100 50,-160 Q22,-100 0,-34Z"/>
+              <path d="M0,-34 Q-10,-120 4,-190 Q14,-120 0,-34Z"/><path d="M0,-34 Q-50,-60 -70,-90 Q-30,-70 0,-34Z"/>
+            </g>
+          </g>
+          <circle cx="360" cy="236" r="26" fill="#e8d3b0" stroke="#c4ab84" stroke-width="2"/>
+          <rect class="room-dim" width="400" height="300" fill="#120c26" style="opacity:calc(var(--dim,.3) * .4)"/>
+        </svg>
+        <div id="futonProp">🛏️</div>
+        <div id="horiWrap"></div>
+      </div>
+      <div id="clock">
+        <svg viewBox="-50 -50 100 100" aria-hidden="true">
+          <circle class="face" r="45"/>
+          <path class="arc" id="clockArc"/>
+          <g id="clockTicks"></g>
+          <line class="hand" id="hourHand" x1="0" y1="0" x2="0" y2="-22" stroke-width="6"/>
+          <line class="hand" id="minHand" x1="0" y1="0" x2="0" y2="-33" stroke-width="3.5"/>
+          <circle r="4" fill="#ff4d6d"/>
+        </svg>
+        <div id="clockText">20:00</div>
+      </div>
+      <div id="live">LIVE</div>
+      <div class="ov" id="steam"></div>
+      <div id="collabWin"></div>
+      <div class="ov" id="vignette"></div>
+      <div class="ov" id="darken"></div>
+      <div id="lidTop"></div><div id="lidBot"></div>
+      <div id="warnMarks"><span style="left:8%;top:30%">⚠️</span><span style="right:8%;top:30%">⚠️</span><span style="left:44%;top:22%">🚨</span></div>
+      <div id="speech"></div>
+      <div id="banner"></div>
+      <div id="superchat"><div class="sc-h"></div><div class="sc-b"></div></div>
+      <div class="ov" id="flash"></div>
+    </div>
+    <aside id="comments"><h3>💬 チャット</h3><ul id="commentList"></ul></aside>
+  </div>
+
+  <nav id="controls"></nav>
+</div>
+
+<!-- BAN危機 -->
+<div id="banLayer">
+  <div class="banTitle">⚠️ 映ったらアウト！！ ⚠️</div>
+  <button id="okeBtn">🐘 スタンプで隠せ！<small>タップ / スペースキー</small></button>
+  <div id="banTimer"><i></i></div>
+</div>
+
+<!-- タイトル -->
+<section class="screen show" id="screenTitle">
+  <div id="titleHori"></div>
+  <h1>ショートスリーパー<br>1週間配信チャレンジ</h1>
+  <div class="howto">
+    1日30分しか寝ない配信者・<b>堀 大好き</b>の1週間連続配信（毎晩20時〜朝6時）。<br>
+    堀が<b>寝落ち寸前（限界）</b>になった瞬間に刺激を入れて叩き起こせ！<br>
+    早すぎる刺激は効果半減。間に合わなければ寝落ち…。<br>
+    PC：<b>1〜4キー</b>で刺激 ／ <b>スペース</b>でスタンプ　スマホ：タップ
+  </div>
+  <p id="bestText"></p>
+  <button class="btn" id="startBtn">配信スタート</button>
+  <div id="daySelect"></div>
+</section>
+
+<!-- Day開始 -->
+<section class="screen" id="screenDay">
+  <div id="dayHori"></div>
+  <h1 id="dayTitle">Day 1 配信開始！</h1>
+  <div id="dayKumaNote"></div>
+</section>
+
+<!-- 仮眠 -->
+<section class="screen" id="screenNap">
+  <div class="zzz">💤</div>
+  <h2>朝6時、配信終了。<br>30分だけ睡眠…zzz</h2>
+  <p>疲労が少しだけ回復した（全回復はしない）</p>
+  <div id="napBar"><i></i></div>
+</section>
+
+<!-- ゲームオーバー -->
+<section class="screen" id="screenOver">
+  <h1 id="overTitle">寝落ちしました…</h1>
+  <div class="result" id="overResult"></div>
+  <button class="btn" id="retryBtn">リトライ</button>
+  <button class="btn sub" id="retryFromStart">Day 1 から</button>
+  <button class="btn sub" id="toTitleBtn">タイトルへ</button>
+</section>
+
+<!-- クリア -->
+<section class="screen" id="screenClear">
+  <div style="font-size:56px">🎉</div>
+  <h1>7日間 配信完走！！</h1>
+  <p>ショートスリーパー（自称）堀 大好き、1週間の連続配信をやりきった！<br>…さすがに今日は寝てください。</p>
+  <div class="result" id="clearResult"></div>
+  <button class="btn" id="retryBtn2">もう一度</button>
+  <button class="btn sub" id="toTitleBtn2">タイトルへ</button>
+</section>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- ユーティリティ ---------- */
+const $ = s => document.querySelector(s);
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const STIM = Object.fromEntries(CONFIG.stimuli.map(s => [s.id, s]));
+const storage = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 使えない環境では無視 */ } },
+};
+
+/* ---------- セリフ・コメント ---------- */
+const LINES = {
+  idle:    ['ショートスリーパーなんで余裕っす', '今日も元気に配信していくぞ〜', '30分寝たら十分なんよ', 'コメント読んでいくね〜'],
+  idleLow: ['…なに？', 'はぁ…', '別に怒ってないけど？'],
+  attack:  ['……ふぁ…', 'あれ…なんか…', 'ね、ねむくないし…', 'ちょ…まぶたが…'],
+  limit:   ['………zz', '…………', 'す…ぴ…'],
+  wake:    ['はっ！寝てない寝てない！', 'うおっ！起きた！', '目ぇ覚めたわ！', 'セーフ！！'],
+  insult: [
+    ['は？なにそれw', 'いや効かんけど？', '草。で？', 'はいはいw'],
+    ['…お前さっきからなんなん？', 'しつこいって', 'おもんないねん、それ'],
+    ['マジで次言ったら知らんからな', '……（無言で睨む）', '……もう一回言うてみ？'],
+    ['もうええわ、配信終わり！'],
+  ],
+  workout: ['ダンベルいくぞ！ふんっ！', 'あと10回！ふんっ！', '筋肉で眠気を殺す！'],
+  bath:    ['ひとっ風呂浴びてくるわ〜', 'あ〜目ぇ覚める〜♨️', 'スマホ見ながら長風呂や〜'],
+  banSafe: ['あっぶな！！象さんありがとう！', 'セーフ！スタンプ職人に感謝！'],
+  collab:  ['今日はスペシャルゲスト！ぴよ太さん！', 'うわ本物や！テンション上がる〜！'],
+  partner: ['ぴよぴよ〜！ミラクル☆ぴよ太だよ！', '堀くん顔色やばくない？w'],
+  leave:   ['ちょっとプロテイン取ってくるわ', 'トイレ行ってくる！', '充電器どこやっけ…'],
+  back:    ['ただいま〜', 'おまたせ！', '戻ったで〜'],
+};
+const SC_INSULTS = ['寝てんの？www', '顔むくんでて草', 'それでショートスリーパー名乗ってんの？', 'ゲーム下手すぎ', '声ちっさ', '髪型ダサくない？'];
+const VIEWERS = ['ねこまる', 'ぽんず', '夜ふかし太郎', 'もちこ', 'たぬき', 'みかん箱', '社畜A', 'ゆうき', 'はるか', 'カフェイン中毒', 'nemui_kun', 'しじみ', 'ぴーまん', 'あずき', '無職の星', 'ごりら'];
+const C = {
+  normal:  ['こんばんは〜', '今日も起きてて草', 'ショートスリーパーすげぇ', '30分睡眠ってマジ？', '初見です', '今日なにやるの？', 'わこつ', '8888', '腕ふっと'],
+  normalLate: ['顔色やばくない？', 'クマすごいって', '寝てくれ頼む', '目が死んでる', '何日目？', '人間やめてる'],
+  dawn:    ['もう朝やん', '外明るくなってきた', '朝までおつ', '鳥鳴いてる'],
+  sleepy:  ['目ぇ閉じてて草', '寝るなー！', 'おーい', 'まぶた重そう', '船こいでるw', '起きろおおお'],
+  limit:   ['寝た？', '寝落ち不可避', 'おきてえええ', 'zzz', '今だ！刺激入れろ！', 'あっ…'],
+  success: ['起きたwww', '起きたwwwww', '生き返ったw', 'ナイス覚醒', '起床確認', 'おはようございます！'],
+  flying:  ['早くね？w', 'まだ起きてたやろ', 'フライングw'],
+  insult3: ['やばいやばい', '空気変わった', 'スパチャやめとけって', 'ガチギレ寸前', 'もうやめたれ', '目がマジ'],
+  insult:  ['スパチャ悪口で草', 'ひどいw', 'それは言いすぎ', 'いいぞもっとやれ'],
+  lowMood: ['機嫌悪くて草', 'ピリピリしてる', '圧がすごい', 'こっわ', '雰囲気わるっ'],
+  collab:  ['ぴよ太きたあああ', 'コラボ神回', 'ぴよ太かわいい', '堀くん嬉しそうw', '同接えぐい'],
+  bath:    ['風呂配信!?', '湯気仕事しろ', 'のぼせるなよw', '入浴中で草', 'アヒルかわいい'],
+  workout: ['筋トレ配信助かる', 'フォーム綺麗', 'あと10回！', 'プロテイン飲め', '上腕二頭筋えぐい'],
+  ban:     ['スタンプ！スタンプ！！', '履いてないやん！？', 'カメラ止めろ', 'アウトアウト'],
+  banSafe: ['ナイススタンプw', 'パオーン', '象さんGJ', 'セーフwww'],
+  away:    ['どこ行った？', 'おーい', '無人配信で草', '帰ってこーい', '声だけ聞こえる'],
+  massage: ['これ寝てる？', '気持ちよさそう', '起きてる起きてる', 'いや寝てるやろ', '整体うらやま', '顔が平和', 'どっち？w'],
+};
+
+/* ---------- サウンド（Web Audio API） ---------- */
+const Sound = {
+  ctx: null,
+  muted: storage.get(CONFIG.storageKeys.muted) === '1',
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try { this.ctx = new AC(); } catch (e) { return; }
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  tone(f, d, { type = 'sine', vol = 0.2, to = null, delay = 0 } = {}) {
+    if (this.muted || !this.ctx) return;
+    const c = this.ctx, t = c.currentTime + delay;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + d);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(c.destination);
+    o.start(t); o.stop(t + d + 0.02);
+  },
+  play(name) {
+    switch (name) {
+      case 'attack':  this.tone(320, 0.6, { to: 110, vol: 0.15 }); break;
+      case 'warn':    this.tone(880, 0.1, { type: 'square', vol: 0.1 }); this.tone(880, 0.1, { type: 'square', vol: 0.1, delay: 0.15 }); break;
+      case 'heart':   this.tone(70, 0.12, { vol: 0.6 }); this.tone(58, 0.12, { vol: 0.45, delay: 0.15 }); break;
+      case 'success': [523, 784, 1046].forEach((f, i) => this.tone(f, 0.12, { type: 'triangle', vol: 0.2, delay: i * 0.07 })); break;
+      case 'flying':  this.tone(440, 0.12, { type: 'triangle', vol: 0.15 }); break;
+      case 'insult':  this.tone(220, 0.18, { type: 'sawtooth', vol: 0.1, to: 140 }); break;
+      case 'event':   this.tone(660, 0.1, { vol: 0.15 }); this.tone(520, 0.14, { vol: 0.15, delay: 0.12 }); break;
+      case 'ban':     [0, 0.12, 0.24].forEach(d => this.tone(1250, 0.08, { type: 'square', vol: 0.12, delay: d })); break;
+      case 'oke':     this.tone(260, 0.08, { type: 'square', vol: 0.15 }); this.tone(1400, 0.25, { type: 'triangle', vol: 0.15, delay: 0.06 }); break;
+      case 'denied':  this.tone(140, 0.12, { type: 'square', vol: 0.08 }); break;
+      case 'over':    [440, 370, 311, 220].forEach((f, i) => this.tone(f, 0.3, { type: 'triangle', vol: 0.2, delay: i * 0.22 })); break;
+      case 'clear':   [523, 659, 784, 1046, 784, 1046].forEach((f, i) => this.tone(f, 0.18, { type: 'triangle', vol: 0.2, delay: i * 0.12 })); break;
+      case 'day':     this.tone(587, 0.12, { type: 'triangle', vol: 0.18 }); this.tone(880, 0.2, { type: 'triangle', vol: 0.18, delay: 0.12 }); break;
+      case 'nap':     this.tone(392, 0.6, { vol: 0.12, to: 196 }); break;
+      case 'snore':   this.tone(85, 0.45, { type: 'sawtooth', vol: 0.12, to: 60 }); break;
+    }
+  },
+};
+
+/* ---------- 堀 大好き（SVGのミニキャラ） ----------
+ * 表情・ポーズは FACE の組み合わせで切り替える。data-k="部位:値" の要素だけが表示される */
+const FACE = {
+  normal:  { pose: 'stand', arms: 'down', eyes: 'open',   brow: 'normal', mouth: 'smile' },
+  sulky:   { pose: 'stand', arms: 'down', eyes: 'open',   brow: 'angry',  mouth: 'flat' },
+  happy:   { pose: 'stand', arms: 'chin', eyes: 'happy',  brow: 'normal', mouth: 'grin', cheeks: 1 },
+  sleepy:  { pose: 'stand', arms: 'down', eyes: 'open',   brow: 'sleepy', mouth: 'o' },
+  limit:   { pose: 'stand', arms: 'down', eyes: 'closed', brow: 'sleepy', mouth: 'open' },
+  angry1:  { pose: 'stand', arms: 'down', eyes: 'open',   brow: 'angry',  mouth: 'frown' },
+  angry2:  { pose: 'stand', arms: 'down', eyes: 'open',   brow: 'angry2', mouth: 'flat' },
+  angry3:  { pose: 'stand', arms: 'down', eyes: 'open',   brow: 'angry2', mouth: 'effort', sweat: 1 },
+  workout: { pose: 'stand', arms: 'curl', eyes: 'open',   brow: 'angry',  mouth: 'effort', sweat: 1 },
+  bath:      { pose: 'bath',  eyes: 'open',  brow: 'normal', mouth: 'flat',  cheeks: 1 },
+  bathEnter: { pose: 'enter', eyes: 'happy', brow: 'normal', mouth: 'smile', cheeks: 1 },
+  banBath:   { pose: 'enter', eyes: 'open',  brow: 'sleepy', mouth: 'shock', sweat: 1 },
+  // マッサージ中：寝ていても起きていても同じ顔（目を閉じて口が半開き）
+  massage:      { pose: 'massage', eyes: 'closed', brow: 'normal', mouth: 'o' },
+  massageAwake: { pose: 'massage', eyes: 'open',   brow: 'sleepy', mouth: 'o' },
+};
+// 画像差し替え時に使う ASSETS.hori のキー
+const IMG_KEY = { sulky: 'normal', angry1: 'angry', angry2: 'angry', angry3: 'angry', bathEnter: 'bath', banBath: 'bath', massageAwake: 'massage' };
+
+function chibiHead(id) {
+  const eye = (x, s) => `
+    <g transform="translate(${x} 15)">
+      <clipPath id="${id}${s}"><ellipse rx="9.6" ry="10.1"/></clipPath>
+      <g data-k="eyes:open">
+        <ellipse class="ew" rx="9" ry="9.5"/>
+        <path class="veins" d="M-8.6,1 L-5,0 L-3.6,2.4 M8.6,2 L5.2,1 L4,3.4"/>
+        <ellipse class="ep" cx="${s === 'l' ? 1.5 : -1.5}" cy="1.5" rx="5.6" ry="7"/>
+        <circle class="eh" cx="${s === 'l' ? -0.5 : -3.5}" cy="-2" r="2.1"/>
+        <g clip-path="url(#${id}${s})"><rect class="lid sk" x="-11" y="-11" width="22" height="22"/><path class="lidline" d="M-11,-11 H11"/></g>
+        <ellipse class="ewo" rx="9" ry="9.5"/>
+      </g>
+      <path data-k="eyes:closed" class="st" d="M-8,2 Q0,8 8,2"/>
+      <path data-k="eyes:happy" class="st" d="M-8,5 Q0,-5 8,5"/>
+    </g>`;
+  return `<g class="tilt">
+    <path class="hair" d="M-54,6 C-60,-50 -28,-70 0,-70 C28,-70 60,-50 54,6 Z"/>
+    <ellipse class="sk o" cx="-48" cy="14" rx="8" ry="11"/>
+    <ellipse class="sk o" cx="48" cy="14" rx="8" ry="11"/>
+    <ellipse class="sk o" cx="0" cy="8" rx="46" ry="45"/>
+    <g data-k="cheeks:1"><ellipse class="cheek" cx="-29" cy="30" rx="7" ry="4"/><ellipse class="cheek" cx="29" cy="30" rx="7" ry="4"/></g>
+    <ellipse class="kuma-s" cx="-18" cy="28" rx="10" ry="4.5" filter="url(#${id}soft)"/>
+    <ellipse class="kuma-s" cx="18" cy="28" rx="10" ry="4.5" filter="url(#${id}soft)"/>
+    ${eye(-18, 'l')}${eye(18, 'r')}
+    <path class="hair" d="M-50,-2 C-54,-46 -26,-64 2,-64 C30,-64 54,-46 50,-2 L45,-12 L40,-2 L34,-16 L28,-6 L20,-18 L14,-8 L6,-20 L0,-9 L-8,-20 L-14,-8 L-22,-18 L-28,-6 L-36,-16 L-41,-3 L-46,-12 Z"/>
+    <path d="M-30,-48 Q-8,-58 16,-54" stroke="#5b4848" stroke-width="3" fill="none" stroke-linecap="round" opacity=".7"/>
+    <g data-k="towel:1"><path d="M-44,-52 Q0,-88 44,-52 L40,-40 Q0,-72 -40,-40 Z" fill="#fff" stroke="#3b2321" stroke-width="2.5"/><path d="M-30,-56 Q0,-76 30,-56" stroke="#7cc7ff" stroke-width="3" fill="none"/></g>
+    <g data-k="brow:normal"><path class="br" d="M-27,2 Q-18,-2 -9,1"/><path class="br" d="M27,2 Q18,-2 9,1"/></g>
+    <g data-k="brow:sleepy"><path class="br" d="M-27,3 Q-18,1 -9,-3"/><path class="br" d="M27,3 Q18,1 9,-3"/></g>
+    <g data-k="brow:angry"><path class="br" d="M-27,-2 L-9,4"/><path class="br" d="M27,-2 L9,4"/></g>
+    <g data-k="brow:angry2"><path class="br thick" d="M-28,-4 L-8,6"/><path class="br thick" d="M28,-4 L8,6"/><path class="st" style="stroke-width:1.8" d="M-3,-4 v6 M3,-4 v6"/></g>
+    <path data-k="mouth:smile" class="st" d="M-8,36 Q0,43 8,36"/>
+    <g data-k="mouth:grin"><path d="M-15,33 Q0,52 15,33 Z" fill="#8b2a2a" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/><path d="M-13,34 Q0,37 13,34 L12,38 Q0,41 -12,38 Z" fill="#fff"/></g>
+    <ellipse data-k="mouth:o" cx="3" cy="39" rx="4.5" ry="3.5" fill="#6b2424" stroke="#3b2321" stroke-width="2"/>
+    <g data-k="mouth:open"><ellipse cx="2" cy="39" rx="6.5" ry="6" fill="#6b2424" stroke="#3b2321" stroke-width="2"/><path d="M8,42 q2,6 0,10" stroke="#7cc7ff" stroke-width="2.5" fill="none" stroke-linecap="round"/></g>
+    <path data-k="mouth:frown" class="st" d="M-8,41 Q0,34 8,41"/>
+    <path data-k="mouth:flat" class="st" d="M-9,39 H9"/>
+    <g data-k="mouth:effort"><rect x="-10" y="34" width="20" height="9" rx="3" fill="#fff" stroke="#3b2321" stroke-width="2.2"/><path d="M-10,38.5 H10 M-3,34 V43 M4,34 V43" stroke="#3b2321" stroke-width="1.2"/></g>
+    <ellipse data-k="mouth:shock" cx="0" cy="39" rx="6" ry="8" fill="#6b2424" stroke="#3b2321" stroke-width="2"/>
+    <path data-k="sweat:1" d="M42,-10 q6,9 0,13 q-6,-4 0,-13Z" fill="#8fd3ff" stroke="#3b7fb0" stroke-width="1.5"/>
+    <g data-k="acc:patch"><path d="M-47,10 L6,11 M31,11 L47,10" stroke="#f2f2f2" stroke-width="2.2"/>
+      <rect x="5" y="2" width="27" height="25" rx="4" fill="#fafafa" stroke="#3b2321" stroke-width="2"/><path d="M10,8 h17 M10,14 h17 M10,20 h17" stroke="#e4e4e4" stroke-width="1.2"/></g>
+    <g data-k="acc:glasses">
+      <path d="M-46,10 L-31,12 M31,12 L46,10 M-6,12 Q0,8 6,12" stroke="#c9a24a" stroke-width="2.4" fill="none"/>
+      <path d="M-31,8 Q-18,4 -5,8 Q-4,22 -15,26 Q-29,26 -31,8Z" fill="rgba(80,55,65,.88)" stroke="#c9a24a" stroke-width="2.4"/>
+      <path d="M31,8 Q18,4 5,8 Q4,22 15,26 Q29,26 31,8Z" fill="rgba(80,55,65,.88)" stroke="#c9a24a" stroke-width="2.4"/>
+      <path d="M-26,11 l6,-2 M10,11 l6,-2" stroke="#fff" stroke-width="1.6" opacity=".6"/></g>
+  </g>`;
+}
+
+const limb = (d, w) => `<path class="limb-o" d="${d}" stroke-width="${w + 5}"/><path class="limb" d="${d}" stroke-width="${w}"/>`;
+const hand = (x, y, r = 9) => `<circle class="sk o" cx="${x}" cy="${y}" r="${r}"/>`;
+const dumbbell = (x, y) => `<rect x="${x - 16}" y="${y - 2.5}" width="32" height="5" fill="#666" stroke="#222" stroke-width="1.2"/>
+  <rect x="${x - 21}" y="${y - 10}" width="8" height="20" rx="2" fill="#333"/><rect x="${x + 13}" y="${y - 10}" width="8" height="20" rx="2" fill="#333"/>`;
+
+// 隠しスタンプ（象さん）
+const elephant = () => `<g>
+  <ellipse cx="-17" cy="-3" rx="11" ry="14" fill="#8cc6ee" stroke="#3b6b8f" stroke-width="2"/>
+  <ellipse cx="17" cy="-3" rx="11" ry="14" fill="#8cc6ee" stroke="#3b6b8f" stroke-width="2"/>
+  <circle r="15" fill="#a9daf8" stroke="#3b6b8f" stroke-width="2"/>
+  <ellipse cx="-10" cy="4" rx="3.5" ry="2.2" fill="#ffb3c1"/><ellipse cx="10" cy="4" rx="3.5" ry="2.2" fill="#ffb3c1"/>
+  <circle cx="-6" cy="-3" r="2" fill="#333"/><circle cx="6" cy="-3" r="2" fill="#333"/>
+  <path d="M-3,3 Q-3,16 -9,19 Q-14,20 -12,15 Q-7,14 -7,4 Z" fill="#a9daf8" stroke="#3b6b8f" stroke-width="1.8" stroke-linejoin="round"/>
+</g>`;
+
+let horiUid = 0;
+function chibiSVG() {
+  const u = 'h' + (++horiUid);
+  return `<svg class="chibi" viewBox="0 0 200 250" aria-hidden="true">
+  <defs>
+    <pattern id="${u}tank" width="24" height="24" patternUnits="userSpaceOnUse">
+      <rect width="24" height="24" fill="#18223d"/>
+      <path d="M2,4 H12 M14,9 V18 M4,15 H10 M18,3 H23 M6,20 V23 M16,21 H22" stroke="#4aa3ff" stroke-width="1.3" opacity=".9"/>
+      <path d="M9,6 V11 M19,13 H23" stroke="#bfe3ff" stroke-width="1"/>
+    </pattern>
+    <filter id="${u}ssoft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
+    <filter id="${u}bsoft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
+    <filter id="${u}msoft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
+    <filter id="${u}esoft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter>
+  </defs>
+  <!-- 立ち姿（通常・眠い・怒り・ご機嫌・筋トレ） -->
+  <g data-k="pose:stand">
+    <g data-k="chair:egg"><ellipse cx="100" cy="138" rx="94" ry="122" fill="#f4f1ec" stroke="#3b2321" stroke-width="2.5"/>
+      <ellipse cx="100" cy="146" rx="78" ry="104" fill="#c8202a" stroke="#3b2321" stroke-width="2.5"/></g>
+    <g class="breathe">
+    ${limb('M88,212 V230 M112,212 V230', 15)}
+    <ellipse cx="86" cy="236" rx="12" ry="6" fill="#222"/><ellipse cx="114" cy="236" rx="12" ry="6" fill="#222"/>
+    <path d="M68,188 H132 L136,218 H104 L100,206 L96,218 H64 Z" fill="#2e2e36" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
+    <path data-k="chair:egg" d="M34,216 Q100,234 166,216 L164,232 Q100,252 36,232 Z" fill="#f4f1ec" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
+    <rect class="sk o" x="90" y="116" width="20" height="16"/>
+    <circle class="sk o" cx="62" cy="142" r="16"/><circle class="sk o" cx="138" cy="142" r="16"/>
+    <path d="M70,124 Q100,140 130,124 L138,148 Q134,170 134,196 H66 Q66,170 62,148 Z" fill="url(#${u}tank)" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M106,152 q3,-4 6,0 q3,4 6,0 q-3,-4 -6,0 q-3,4 -6,0" stroke="#fff" stroke-width="1.6" fill="none"/>
+    <g data-k="arms:down">
+      ${limb('M60,144 L50,174 L52,200', 22)}${hand(52, 204)}
+      ${limb('M140,144 L150,174 L148,200', 22)}${hand(148, 204)}
+      <path class="musc" d="M46,160 q4,7 11,5 M154,160 q-4,7 -11,5"/>
+    </g>
+    <g data-k="arms:chin">
+      ${limb('M60,144 L50,174 L52,200', 22)}${hand(52, 204)}
+      <path class="musc" d="M46,160 q4,7 11,5"/>
+    </g>
+    <g data-k="arms:curl">
+      ${limb('M60,144 L52,176', 24)}${limb('M140,144 L148,176', 24)}
+      <path class="musc" d="M47,158 q5,8 12,5 M153,158 q-5,8 -12,5"/>
+      <g class="curlL">${limb('M52,176 L52,202', 19)}${hand(52, 206)}${dumbbell(52, 206)}</g>
+      <g class="curlR">${limb('M148,176 L148,202', 19)}${hand(148, 206)}${dumbbell(148, 206)}</g>
+    </g>
+  </g>
+  <g transform="translate(100 82)">${chibiHead(u + 's')}</g>
+  <g data-k="arms:chin">${limb('M140,144 L156,178 L120,140', 22)}${hand(116, 136, 11)}<path class="musc" d="M150,158 q-2,8 -10,8"/></g>
+  </g>
+  <!-- 入浴：湯船に入る（横から片足でまたいで沈む）。水着を履き忘れたときは湯気→スタンプで隠す -->
+  <g data-k="pose:enter">
+    <ellipse cx="110" cy="196" rx="120" ry="9" fill="rgba(140,195,215,.9)"/>
+    <g class="enter">
+      ${limb('M88,212 V232', 15)}<ellipse class="sk o" cx="86" cy="236" rx="11" ry="5"/>
+      <g class="legR">${limb('M112,212 V232', 15)}<ellipse class="sk o" cx="114" cy="236" rx="11" ry="5"/></g>
+      <g data-k="trunks:1"><path d="M68,188 H132 L136,218 H104 L100,206 L96,218 H64 Z" fill="#ff5a5a" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/><path d="M67,198 H133" stroke="#fff" stroke-width="3"/></g>
+      <path data-k="trunks:" class="sk o" d="M68,188 H132 L136,218 H104 L100,210 L96,218 H64 Z" stroke-linejoin="round"/>
+      <rect class="sk o" x="90" y="116" width="20" height="16"/>
+      <circle class="sk o" cx="62" cy="142" r="16"/><circle class="sk o" cx="138" cy="142" r="16"/>
+      <path class="sk o" d="M70,124 Q100,134 130,124 L138,148 Q134,170 134,192 H66 Q66,170 62,148 Z" stroke-linejoin="round"/>
+      <path class="musc" d="M78,150 q11,7 22,0 q11,7 22,0 M100,158 V186 M90,168 h20 M90,178 h20"/>
+      ${limb('M60,144 L50,174 L52,200', 22)}${hand(52, 204)}
+      ${limb('M140,144 L150,174 L148,200', 22)}${hand(148, 204)}
+      <g transform="translate(100 82)">${chibiHead(u + 'e')}</g>
+      <g data-k="censor:steam" transform="translate(100 204)"><g class="censor-steam" fill="#fff" opacity=".97">
+        <circle cx="-20" cy="0" r="15"/><circle cx="0" cy="-8" r="17"/><circle cx="20" cy="2" r="15"/><circle cx="0" cy="10" r="15"/></g></g>
+      <g data-k="censor:stamp" transform="translate(100 204) scale(1.3)">${elephant()}</g>
+    </g>
+    <rect x="-20" y="194" width="240" height="8" rx="4" fill="#fff" stroke="#3b2321" stroke-width="2.5"/>
+    <rect x="-20" y="202" width="240" height="60" fill="#f2f6f9" stroke="#3b2321" stroke-width="2.5"/>
+    <path d="M-20,214 H220" stroke="#d4e3ee" stroke-width="3"/>
+  </g>
+  <!-- 整体：施術台に仰向けの堀と、頭をほぐす整体師（架空） -->
+  <g data-k="pose:massage">
+    <path d="M-16,114 Q30,98 76,114 L82,214 H-22 Z" fill="#55595f" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
+    <text x="40" y="140" font-size="7" font-weight="800" fill="#e8e8e8">整体</text>
+    <rect class="sk o" x="20" y="84" width="20" height="20"/>
+    <g transform="translate(30 58)">
+      <path d="M-36,10 C-40,-34 -18,-44 0,-44 C18,-44 40,-34 36,10 Z" fill="#1d1516" stroke="#3b2321" stroke-width="2.5"/>
+      <ellipse class="sk o" cx="0" cy="2" rx="30" ry="31"/>
+      <path d="M-32,-4 C-34,-36 -12,-40 2,-40 C18,-40 34,-32 32,-4 L26,-14 L20,-4 L12,-18 L4,-8 L-6,-20 L-14,-6 L-22,-16 L-28,-4 Z" fill="#1d1516" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
+      <ellipse cx="-11" cy="6" rx="5" ry="5.5" fill="#fff" stroke="#3b2321" stroke-width="1.8"/><circle cx="-10" cy="3" r="2.8" fill="#2a1c1c"/>
+      <ellipse cx="11" cy="6" rx="5" ry="5.5" fill="#fff" stroke="#3b2321" stroke-width="1.8"/><circle cx="12" cy="3" r="2.8" fill="#2a1c1c"/>
+      <path d="M-4,20 q4,3 8,0" stroke="#3b2321" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    </g>
+    <rect x="-60" y="198" width="320" height="22" rx="6" fill="#f4f1ec" stroke="#3b2321" stroke-width="2.5"/>
+    <rect x="-60" y="220" width="320" height="40" fill="#c8b8a0" stroke="#3b2321" stroke-width="2.5"/>
+    <ellipse cx="62" cy="196" rx="58" ry="12" fill="#fff" stroke="#3b2321" stroke-width="2.5"/>
+    <rect x="118" y="160" width="140" height="42" rx="20" fill="url(#${u}tank)" stroke="#3b2321" stroke-width="2.5"/>
+    ${limb('M134,198 L230,204', 18)}
+    <rect class="sk o" x="112" y="170" width="20" height="22"/>
+    <g transform="translate(76 168) rotate(-72) scale(.86)">${chibiHead(u + 'm')}</g>
+    ${limb('M-8,128 L-6,150 L4,152', 16)}${hand(8, 152, 10)}
+    ${limb('M66,126 L40,160 L18,176', 16)}${hand(14, 178, 10)}
+  </g>
+  <!-- 入浴：肩まで浸かってスマホを見る -->
+  <g data-k="pose:bath">
+    <rect x="-20" y="136" width="240" height="12" rx="6" fill="#f7fafc" stroke="#3b2321" stroke-width="2.5"/>
+    <rect x="-20" y="148" width="240" height="32" fill="#e3ecf1"/>
+    <ellipse class="sk" cx="100" cy="214" rx="64" ry="30"/>
+    <rect class="sk o" x="90" y="160" width="20" height="18"/>
+    <g transform="translate(100 124) rotate(-4)">${chibiHead(u + 'b')}</g>
+    <path class="ripple" d="M-20,174 Q10,168 40,174 T100,174 T160,174 T220,174 V262 H-20 Z" fill="rgba(140,195,215,.86)"/>
+    <path d="M14,192 q15,-4 30,0 M124,200 q15,-4 30,0 M64,218 q15,-4 30,0" stroke="#eef8fc" stroke-width="2" fill="none" opacity=".8"/>
+    ${limb('M44,182 L54,152', 18)}${hand(56, 146)}
+    <g transform="translate(176 100) rotate(8)">
+      <rect x="-14" y="-24" width="28" height="48" rx="6" fill="#d8bf95" stroke="#3b2321" stroke-width="2.2"/>
+      <rect x="-10" y="-20" width="12" height="12" rx="3" fill="#333"/><circle cx="2" cy="6" r="7" fill="#f4f4f4" stroke="#bbb"/>
+    </g>
+    ${limb('M162,182 L166,134', 18)}${hand(166, 126)}
+    <g data-k="float:1" transform="translate(66 200) scale(.75)">${elephant()}</g>
+    <g transform="translate(150 186)"><ellipse rx="11" ry="7" fill="#ffd84a" stroke="#3b2321" stroke-width="1.8"/><circle cx="6" cy="-8" r="6" fill="#ffd84a" stroke="#3b2321" stroke-width="1.8"/><path d="M11,-8 l6,1 l-6,2z" fill="#ff8a3d"/><circle cx="7" cy="-9" r="1.2" fill="#222"/></g>
+  </g>
+  </svg>`;
+}
+
+function buildHori(container) {
+  const el = document.createElement('div');
+  el.className = 'hori';
+  el.innerHTML = `<img class="hori-img" alt="" hidden>${chibiSVG()}
+    <div class="kuma-ov l"></div><div class="kuma-ov r"></div>
+    <div class="prop a"></div><div class="prop c"></div>`;
+  const k = ASSETS.kumaLayout;
+  el.querySelectorAll('.kuma-ov').forEach(kd => {
+    Object.assign(kd.style, { top: k.y, width: k.w, height: k.h, left: kd.classList.contains('l') ? k.leftX : k.rightX });
+  });
+  container.appendChild(el);
+  const parts = [...el.querySelectorAll('[data-k]')].map(n => { const [key, v] = n.dataset.k.split(':'); return { n, key, v }; });
+  const img = el.querySelector('.hori-img');
+  const props = [...el.querySelectorAll('.prop')];
+  let cur = '';
+  return {
+    // trunks: 水着を着ているか / censor: 'steam'（湯気で隠す）・'stamp'（象さんスタンプ） / floatStamp: 湯船にスタンプが浮く
+    set({ expr, day, lid = 0, ban = false, trunks = true, censor = '', floatStamp = false, props: pr = ['', ''] }) {
+      const kuma = CONFIG.kuma[day - 1] || CONFIG.kuma[0];
+      const key = [expr, day, ban, trunks, censor, floatStamp, pr.join()].join('|');
+      if (key !== cur) {
+        cur = key;
+        const lk = CONFIG.looks[day - 1] || {};
+        const f = { ...FACE[expr], trunks: trunks ? 1 : '', censor, float: floatStamp ? 1 : '',
+          acc: lk.eyepatch ? 'patch' : lk.sunglasses ? 'glasses' : '', chair: lk.eggChair ? 'egg' : '' };
+        if (lk.eyesShut && f.eyes === 'open') f.eyes = 'closed'; // 目が開いていないので、眠いのか分からない
+        parts.forEach(p => { p.n.style.display = String(f[p.key] ?? '') === p.v ? '' : 'none'; });
+        const anger = /^angry(\d)$/.exec(expr);
+        el.className = 'hori expr-' + expr.replace(/\d$/, '')
+          + (anger ? ' anger' + anger[1] : '') + (ban ? ' ban' : '') + (trunks ? '' : ' naked') + (f.pose === 'bath' ? ' flush look-r' : '')
+          + (kuma.bloodshot ? ' bloodshot' : '') + (kuma.pale ? ' pale' : '') + (kuma.hollow ? ' hollow' : '');
+        const src = ASSETS.hori[IMG_KEY[expr] || expr];
+        if (src) { img.src = src; img.hidden = false; el.classList.add('has-img'); }
+        else { img.hidden = true; }
+        el.style.setProperty('--kuma-op', kuma.opacity);
+        el.style.setProperty('--kuma-sc', kuma.scale);
+        props.forEach((p, i) => { p.textContent = pr[i] || ''; });
+      }
+      el.style.setProperty('--lid', clamp(Math.max(lid, kuma.hollow ? 0.22 : 0), 0, 1).toFixed(3));
+    },
+  };
+}
+
+/* ---------- DOM参照 ---------- */
+const el = {
+  dayNum: $('#dayNum'), mute: $('#muteBtn'),
+  moodFill: $('#gMood>i'), moodVal: $('#moodVal'), fatFill: $('#gFatigue>i'), fatVal: $('#fatVal'),
+  clock: $('#clock'), hourHand: $('#hourHand'), minHand: $('#minHand'), clockArc: $('#clockArc'), clockText: $('#clockText'),
+  stream: $('#stream'), stage: $('#stage'), horiWrap: $('#horiWrap'), futon: $('#futonProp'),
+  moons: document.querySelectorAll('.kitchen .moon'), suns: document.querySelectorAll('.kitchen .sun'),
+  vignette: $('#vignette'), darken: $('#darken'), lidTop: $('#lidTop'), lidBot: $('#lidBot'),
+  flash: $('#flash'), steam: $('#steam'), warnMarks: $('#warnMarks'),
+  speech: $('#speech'), banner: $('#banner'), sc: $('#superchat'), collabWin: $('#collabWin'),
+  comments: $('#commentList'), controls: $('#controls'),
+  banLayer: $('#banLayer'), banFill: $('#banTimer>i'), oke: $('#okeBtn'),
+  screens: { title: $('#screenTitle'), dayStart: $('#screenDay'), nap: $('#screenNap'), gameover: $('#screenOver'), clear: $('#screenClear') },
+};
+document.documentElement.style.setProperty('--enter-dur', CONFIG.bath.enterDuration + 's');
+const hori = buildHori($('#horiWrap'));
+const titleHori = buildHori($('#titleHori'));
+const dayHori = buildHori($('#dayHori'));
+titleHori.set({ expr: 'happy', day: 1 });
+if (ASSETS.background) { el.stage.classList.add('has-bg'); el.stage.style.backgroundImage = `url("${ASSETS.background}")`; }
+el.collabWin.innerHTML = ASSETS.collabPartner
+  ? `<img src="${ASSETS.collabPartner}" alt="">`
+  : `${ASSETS.fallback.collabPartner}<small>ミラクル☆ぴよ太<br>（登録者280万人）</small>`;
+
+// 時計の目盛り
+$('#clockTicks').innerHTML = Array.from({ length: 12 }, (_, i) => {
+  const a = i * Math.PI / 6, s = Math.sin(a), c = -Math.cos(a);
+  return i % 3 === 0
+    ? `<text class="num" x="${(s * 32).toFixed(1)}" y="${(c * 32).toFixed(1)}">${i === 0 ? 12 : i}</text>`
+    : `<line class="tick" x1="${(s * 34).toFixed(1)}" y1="${(c * 34).toFixed(1)}" x2="${(s * 39).toFixed(1)}" y2="${(c * 39).toFixed(1)}"/>`;
+}).join('');
+
+/* 刺激ボタンを生成 */
+const btns = {};
+CONFIG.stimuli.forEach(s => {
+  const b = document.createElement('button');
+  b.className = 'stim'; b.dataset.id = s.id;
+  b.innerHTML = `<span class="ky">${s.key}</span><span class="ic">${s.icon}</span><span class="nm">${s.name}</span>
+    <span class="rm"></span><span class="cd"></span><span class="cdt"></span>`;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); Sound.unlock(); useStimulus(s.id); });
+  el.controls.appendChild(b);
+  btns[s.id] = { b, rm: b.querySelector('.rm'), cd: b.querySelector('.cd'), cdt: b.querySelector('.cdt') };
+});
+
+/* ---------- ゲーム状態 ---------- */
+// state: title / dayStart / playing / nap / gameover / clear
+// phase（配信中の眠気の状態）: idle（発作待ち） / rising（発作中） / limit（限界ゾーン） / awake（覚醒中）
+const S = {
+  state: 'title', stateTimer: 0,
+  day: 1, t: 0,
+  sleepy: 0, phase: 'idle',
+  attackTimer: 0, graceLeft: 0, graceTotal: 1,
+  awakeLeft: 0, awakeStim: null, pendingAttack: false,
+  speedBoost: { mult: 1, left: 0 },
+  uses: {}, cd: {},
+  insultStreak: 0, angerLeft: 0, angerLevel: 0,
+  mood: CONFIG.mood.initial, intervalMult: 1,
+  eventTimer: 0, pendingEvent: null,
+  ban: null, bathEnterLeft: 0, bathNaked: false,
+  special: null, specialQueue: [], snoreTimer: 0, breathTimer: 0,
+  awayLeft: 0, leaveTimer: Infinity,
+  stats: { total: 0, by: {} },
+  speechLeft: 0, bannerLeft: 0, scLeft: 0, commentTimer: 0, heartTimer: 0, futonLeft: 0,
+};
+
+function dayParams() {
+  const d = CONFIG.days[S.day - 1], k = CONFIG.difficulty || 1;
+  return { attackMin: d.attackMin / k, attackMax: d.attackMax / k, riseSpeed: d.riseSpeed * k, grace: d.grace / k };
+}
+const look = () => CONFIG.looks[S.day - 1] || {};
+function scheduleLeave() { const lv = look().leave; S.leaveTimer = lv ? rand(lv.intervalMin, lv.intervalMax) : Infinity; }
+const progress = () => clamp(S.t / CONFIG.dayLength, 0, 1);
+const attackFactor = () => 1 - (1 - CONFIG.inDay.attackEndFactor) * progress();
+const currentGrace = () => Math.max(CONFIG.inDay.minGrace, dayParams().grace * (1 - (1 - CONFIG.inDay.graceEndFactor) * progress()));
+function scheduleAttack(extra = 0) {
+  const p = dayParams();
+  S.attackTimer = rand(p.attackMin, p.attackMax) * attackFactor() * S.intervalMult * (S.special ? S.special.ev.attackMult : 1) + extra;
+}
+function scheduleEvent(first = false) {
+  const e = CONFIG.events;
+  S.eventTimer = rand(e.intervalMin, e.intervalMax) + (first ? e.firstDelay : 0);
+}
+
+function setState(s) {
+  S.state = s; S.stateTimer = 0;
+  Object.entries(el.screens).forEach(([k, node]) => node.classList.toggle('show', k === s));
+}
+
+function newGame(fromDay = 1) {
+  S.day = fromDay; S.fromDay = fromDay; S.mood = CONFIG.mood.initial;
+  S.stats = { total: 0, by: Object.fromEntries(CONFIG.stimuli.map(s => [s.id, 0])) };
+  el.comments.innerHTML = '';
+  startDay();
+}
+
+function startDay() {
+  S.t = 0; S.sleepy = 0; S.phase = 'idle'; S.awakeLeft = 0; S.awakeStim = null; S.pendingAttack = false;
+  S.intervalMult = 1; S.speedBoost = { mult: 1, left: 0 };
+  S.insultStreak = 0; S.angerLeft = 0; S.angerLevel = 0;
+  S.pendingEvent = null; S.ban = null; S.bathEnterLeft = 0; S.bathNaked = false;
+  S.special = null;
+  S.awayLeft = 0; scheduleLeave();
+  S.specialQueue = CONFIG.specialEvents.filter(e => e.day === S.day).map(ev => ({ ev, at: rand(ev.at[0], ev.at[1]) }));
+  CONFIG.stimuli.forEach(s => { S.uses[s.id] = s.uses; S.cd[s.id] = 0; });
+  scheduleAttack(S.day > 1 ? CONFIG.napFirstAttackBonus : 0);
+  scheduleEvent(true);
+  hideOverlays();
+  // Day開始演出：前日より濃くなったクマを見せる
+  el.dayNum.textContent = S.day;
+  $('#dayTitle').textContent = `Day ${S.day} 配信開始！`;
+  dayHori.set({ expr: S.day >= 6 ? 'sleepy' : 'normal', day: S.day, lid: S.day >= 6 ? 0.45 : 0 });
+  $('#dayKumaNote').textContent = (S.day === 1 ? '今日も元気！（30分睡眠）' : `目の下のクマが濃くなっている…（疲労 Lv.${S.day}）`)
+    + (look().note ? `\n${look().note}` : '');
+  setState('dayStart');
+  Sound.play('day');
+  addComment('sys', `── Day ${S.day} 配信開始 ${clockLabel(0)} ──`);
+}
+
+function hideOverlays() {
+  el.banLayer.classList.remove('show');
+  el.steam.className = 'ov'; el.warnMarks.style.display = 'none';
+  el.collabWin.classList.remove('show');
+  el.speech.className = ''; el.banner.classList.remove('show'); el.sc.classList.remove('show');
+  el.stream.classList.remove('shake');
+}
+
+function endDay() {
+  saveCleared(S.day);
+  if (S.day >= CONFIG.totalDays) { saveBest(CONFIG.totalDays); showResult('clear'); return; }
+  setState('nap');
+  Sound.play('nap');
+}
+
+function gameOver(reason) {
+  if (S.state !== 'playing') return;
+  S.ban = null;
+  el.banLayer.classList.remove('show');
+  saveBest(S.day);
+  const titles = {
+    sleep:  ['寝落ちしました…', `Day ${S.day}、${clockLabel(progress())} に夢の中へ…`],
+    insult: ['堀がキレて配信を切りました', '「もうええわ、配信終わり！」'],
+    ban:    ['配信がBANされました', '⚠️ ガイドライン違反（水着を履き忘れた）'],
+  }[reason];
+  if (reason === 'insult') say(LINES.insult[3][0], 3, 3);
+  $('#overTitle').textContent = titles[0];
+  $('#overResult').innerHTML = `${titles[1]}<br>到達日：<b>Day ${S.day}</b><br>${statsText()}<br>${bestText()}`;
+  $('#retryBtn').textContent = S.day > 1 ? `Day ${S.day} からリトライ` : 'リトライ';
+  $('#retryFromStart').style.display = S.day > 1 ? '' : 'none';
+  S.state = 'ending'; S.stateTimer = 0; S.endReason = reason;
+  Sound.play('over');
+}
+
+function showResult(kind) {
+  if (kind === 'clear') {
+    $('#clearResult').innerHTML = `到達日：<b>Day ${CONFIG.totalDays}（完走）</b>${S.fromDay > 1 ? `<br><small>Day ${S.fromDay} から挑戦</small>` : ''}<br>${statsText()}<br>${bestText()}`;
+    setState('clear');
+    Sound.play('clear');
+  }
+}
+
+function statsText() {
+  const parts = CONFIG.stimuli.map(s => `${s.name} ${S.stats.by[s.id] || 0}`).join(' / ');
+  return `使った刺激：<b>${S.stats.total}回</b><br><small>${parts}</small>`;
+}
+function saveBest(day) {
+  const best = parseInt(storage.get(CONFIG.storageKeys.bestDay) || '0', 10);
+  if (day > best) storage.set(CONFIG.storageKeys.bestDay, String(day));
+}
+const clearedDay = () => parseInt(storage.get(CONFIG.storageKeys.clearedDay) || '0', 10);
+function saveCleared(day) { if (day > clearedDay()) storage.set(CONFIG.storageKeys.clearedDay, String(day)); }
+// タイトルの「Day N から」ボタン：クリア済みの翌日まで選べる
+function renderDaySelect() {
+  const max = Math.min(clearedDay() + 1, CONFIG.totalDays);
+  const box = $('#daySelect');
+  box.innerHTML = max > 1 ? '<p>クリアした日はスキップできます</p>' : '';
+  if (max <= 1) return;
+  for (let d = 2; d <= max; d++) {
+    const b = document.createElement('button');
+    b.className = 'dayBtn'; b.textContent = `Day ${d} から`;
+    b.addEventListener('click', () => onStart(d));
+    box.appendChild(b);
+  }
+}
+function bestText() {
+  const best = parseInt(storage.get(CONFIG.storageKeys.bestDay) || '0', 10);
+  return best ? `最高到達日：Day ${best}${best >= CONFIG.totalDays ? '（完走）' : ''}` : '';
+}
+
+/* ---------- 時計 ---------- */
+const clockSpanHours = () => ((CONFIG.clock.endHour - CONFIG.clock.startHour) + 24) % 24 || 24;
+function clockMinutes(p) { return (CONFIG.clock.startHour * 60 + p * clockSpanHours() * 60) % 1440; }
+function clockLabel(p) {
+  const m = Math.floor(clockMinutes(p));
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+}
+const polar = (deg, r) => [r * Math.sin(deg * Math.PI / 180), -r * Math.cos(deg * Math.PI / 180)];
+function renderClock(p) {
+  const m = clockMinutes(p);
+  const hourDeg = (m / 60 % 12) * 30, minDeg = (m % 60) * 6;
+  el.hourHand.setAttribute('transform', `rotate(${hourDeg.toFixed(1)})`);
+  el.minHand.setAttribute('transform', `rotate(${minDeg.toFixed(1)})`);
+  el.clockText.textContent = clockLabel(p);
+  // 文字盤の外周：配信終了までの残り時間を赤い弧で示す
+  const remainDeg = (1 - p) * clockSpanHours() * 30;
+  if (remainDeg < 0.5) { el.clockArc.setAttribute('d', ''); return; }
+  const [x1, y1] = polar(hourDeg, 41), [x2, y2] = polar(hourDeg + remainDeg, 41);
+  el.clockArc.setAttribute('d', `M${x1.toFixed(2)},${y1.toFixed(2)} A41,41 0 ${remainDeg > 180 ? 1 : 0} 1 ${x2.toFixed(2)},${y2.toFixed(2)}`);
+}
+
+/* ---------- 背景（時刻で空・部屋の明るさが変わる） ---------- */
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mixHex = (a, b, t) => '#' + hex2rgb(a).map((v, i) => Math.round(v + (hex2rgb(b)[i] - v) * t).toString(16).padStart(2, '0')).join('');
+function renderSky(p) {
+  const ks = CONFIG.sky;
+  let i = 0;
+  while (i < ks.length - 2 && p > ks[i + 1].p) i++;
+  const a = ks[i], b = ks[i + 1], t = clamp((p - a.p) / (b.p - a.p), 0, 1);
+  const st = el.stage.style;
+  st.setProperty('--sky-top', mixHex(a.top, b.top, t));
+  st.setProperty('--sky-bot', mixHex(a.bottom, b.bottom, t));
+  st.setProperty('--stars', (a.stars + (b.stars - a.stars) * t).toFixed(2));
+  st.setProperty('--dim', (a.dim + (b.dim - a.dim) * t).toFixed(2));
+  // 月は夜の間に窓を横切り、明け方に太陽が昇る
+  const mp = clamp(p / 0.85, 0, 1);
+  el.moons.forEach(m => {
+    m.setAttribute('transform', `translate(${(276 + mp * 74).toFixed(1)} ${(150 - Math.sin(mp * Math.PI) * 42).toFixed(1)})`);
+    m.style.opacity = p < 0.9 ? 1 : 0;
+  });
+  const sp = clamp((p - 0.8) / 0.2, 0, 1);
+  el.suns.forEach(s => {
+    s.setAttribute('transform', `translate(300 ${(196 - sp * 46).toFixed(1)})`);
+    s.style.opacity = sp;
+  });
+}
+
+/* ---------- 刺激 ---------- */
+function useStimulus(id) {
+  if (S.state !== 'playing' || S.ban) return;
+  const st = STIM[id];
+  if (S.uses[id] === 0 || S.cd[id] > 0) { Sound.play('denied'); return; }
+  if (S.uses[id] !== null) S.uses[id]--;
+  S.cd[id] = st.cooldown;
+  S.stats.total++; S.stats.by[id]++;
+  S.mood = clamp(S.mood + st.mood, 0, 100);
+
+  if (S.awayLeft > 0) { S.awayLeft = 0; scheduleLeave(); } // 刺激が入ると画面に戻ってくる
+  if (id !== 'insult') { S.insultStreak = 0; S.angerLevel = 0; el.stream.classList.remove('shake'); }
+
+  if (id === 'insult') {
+    S.insultStreak++;
+    showSuperchat(pick(SC_INSULTS));
+    Sound.play('insult');
+    if (S.insultStreak >= CONFIG.insult.limit) { S.angerLevel = 3; gameOver('insult'); return; }
+    S.angerLevel = S.insultStreak;           // 1〜3：イラつき度
+    S.angerLeft = CONFIG.insult.angerShowTime;
+    say(pick(LINES.insult[S.angerLevel - 1]), 2.2, S.angerLevel);
+    if (S.angerLevel >= 3) { el.stream.classList.add('shake'); burstComments(C.insult3, 'bad', 3); }
+    else addComment('', pick(C.insult));
+  }
+
+  if (id === 'bath') {
+    // 整体中は施術台の上なので、風呂の効果だけ入る（BAN危機・入浴演出なし）
+    S.bathNaked = !S.special && Math.random() < CONFIG.bath.banChance;
+    if (S.bathNaked) { startBanCrisis(); return; } // スタンプで隠せたら風呂の効果を適用
+    S.bathEnterLeft = S.special ? 0 : CONFIG.bath.enterDuration;
+  }
+  applyAwake(st);
+}
+
+function applyAwake(st) {
+  const success = S.phase === 'limit';
+  let dur = rand(st.awakeMin, st.awakeMax);
+  if (success) {
+    S.sleepy = 0;
+    flash(); Sound.play('success');
+    burstComments(C.success, 'hype', 3);
+    if (st.id !== 'insult') say(pick(LINES.wake), 1.6);
+  } else {
+    S.sleepy *= CONFIG.flying.sleepyKeep;
+    dur *= CONFIG.flying.awakeFactor;
+    Sound.play('flying');
+    if (Math.random() < 0.6) addComment('', pick(C.flying));
+  }
+  S.awakeLeft = S.phase === 'awake' ? Math.max(S.awakeLeft, dur) : dur;
+  S.awakeStim = st.id;
+  S.phase = 'awake';
+
+  if (st.id === 'workout') { say(pick(LINES.workout), 1.8); addComment('', pick(C.workout)); }
+  if (st.id === 'bath') { if (!S.bathNaked) say(pick(LINES.bath), 1.8); addComment('', pick(C.bath)); }
+  if (st.id === 'collab') {
+    S.intervalMult = CONFIG.collab.attackIntervalBonus;
+    say(pick(LINES.collab), 2.2);
+    setTimeout(() => { if (S.state === 'playing' && S.awakeStim === 'collab') addComment('sc', pick(LINES.partner), 'ミラクル☆ぴよ太'); }, 900);
+    burstComments(C.collab, 'hype', 3);
+  }
+}
+
+/* ---------- 風呂のBAN危機 ---------- */
+function startBanCrisis() {
+  S.ban = { left: CONFIG.bath.banTimeLimit };
+  el.banLayer.classList.add('show');
+  el.steam.className = 'ov on heavy';
+  el.warnMarks.style.display = 'block';
+  Sound.play('ban');
+  say('あれ…水着履いてへん！！', CONFIG.bath.banTimeLimit + 0.5, 2);
+  burstComments(C.ban, 'bad', 3);
+}
+function hideOke() {
+  if (!S.ban) return;
+  S.ban = null;
+  S.bathEnterLeft = CONFIG.bath.enterDuration;
+  el.banLayer.classList.remove('show');
+  el.warnMarks.style.display = 'none';
+  Sound.play('oke');
+  say(pick(LINES.banSafe), 1.8);
+  burstComments(C.banSafe, 'hype', 2);
+  applyAwake(STIM.bath);
+}
+
+/* ---------- 眠気 ---------- */
+function startAttack() {
+  S.phase = 'rising';
+  if (S.special) return; // マッサージ中は眠りに落ちる合図を出さない
+  Sound.play('attack');
+  if (S.awayLeft <= 0) say(pick(LINES.attack), 1.6);
+}
+function enterLimit() {
+  S.sleepy = 100;
+  S.phase = 'limit';
+  S.awakeStim = null; S.awakeLeft = 0;
+  S.graceTotal = S.graceLeft = currentGrace();
+  S.heartTimer = 0;
+  if (S.special) { S.snoreTimer = 0; return; } // マッサージ中の合図はいびきだけ
+  Sound.play('warn');
+  if (S.awayLeft <= 0) say(pick(LINES.limit), S.graceTotal);
+}
+function addSleepy(v) {
+  S.sleepy = clamp(S.sleepy + v, 0, 100);
+  if (S.sleepy >= 100 && S.phase !== 'limit') enterLimit();
+}
+
+/* ---------- ランダムイベント ---------- */
+function pickEvent() {
+  const list = CONFIG.events.list;
+  let r = Math.random() * list.reduce((a, e) => a + e.weight, 0);
+  for (const e of list) { if ((r -= e.weight) < 0) return e; }
+  return list[0];
+}
+function announceEvent() {
+  const ev = pickEvent();
+  S.pendingEvent = { ev, left: CONFIG.events.warnTime };
+  showBanner(ev.banner, CONFIG.events.warnTime + 1.2);
+  if (ev.comment) addComment(ev.id === 'longtext' ? 'sc' : '', ev.comment);
+  if (ev.id === 'futon') S.futonLeft = 5;
+  Sound.play('event');
+}
+function applyEvent(ev) {
+  if (ev.hori) say(ev.hori, 2);
+  const ef = ev.effect;
+  if (ef.type === 'speed') { S.speedBoost = { mult: ef.mult, left: ef.duration }; return; }
+  if (S.phase === 'limit') return;
+  if (S.phase === 'awake') {
+    // 覚醒中は眠気が上がらない。満腹だけは覚醒が切れた直後に発作が来る
+    if (ef.type === 'attack') S.pendingAttack = true;
+    else addComment('', '覚醒中で効いてないw');
+    return;
+  }
+  if (ef.type === 'add') addSleepy(ef.amount);
+  if (ef.type === 'attack' && S.phase === 'idle') startAttack();
+}
+
+/* ---------- 突発イベント ---------- */
+function startSpecial(ev) {
+  S.special = { ev, left: ev.duration };
+  S.breathTimer = rand(0.8, 2);
+  showBanner(ev.banner, 2.2);
+  Sound.play('event');
+  addComment('sc', pick(ev.partnerLines), ev.partner);
+  burstComments(C.massage, '', 2);
+  if (S.phase === 'idle') S.attackTimer = rand(ev.firstAttack[0], ev.firstAttack[1]);
+}
+function endSpecial() {
+  const ev = S.special.ev;
+  S.special = null;
+  if (S.phase !== 'limit') say(ev.endLine, 2);
+  addComment('sys', '── 整体タイム終了 ──');
+}
+
+/* ---------- 画面上の小演出 ---------- */
+function say(text, dur = 2, anger = 0) {
+  el.speech.textContent = text;
+  el.speech.className = 'show' + (anger >= 3 ? ' angry3' : anger === 2 ? ' angry2' : '');
+  S.speechLeft = dur;
+}
+function showBanner(text, dur) { el.banner.textContent = text; el.banner.classList.add('show'); S.bannerLeft = dur; }
+function showSuperchat(text) {
+  el.sc.querySelector('.sc-h').textContent = `${pick(VIEWERS)}  ¥${pick([500, 1000, 2000, 5000])}`;
+  el.sc.querySelector('.sc-b').textContent = text;
+  el.sc.classList.add('show'); S.scLeft = 1.8;
+  addComment('sc', text, 'あなた');
+}
+function flash() { el.flash.classList.remove('go'); void el.flash.offsetWidth; el.flash.classList.add('go'); }
+function addComment(cls, text, name) {
+  const li = document.createElement('li');
+  if (cls) li.className = cls;
+  if (cls !== 'sys') { const b = document.createElement('b'); b.textContent = name || pick(VIEWERS); li.appendChild(b); }
+  li.appendChild(document.createTextNode(text));
+  el.comments.appendChild(li);
+  while (el.comments.children.length > CONFIG.comments.max) el.comments.removeChild(el.comments.firstChild);
+}
+function burstComments(pool, cls, n) {
+  for (let i = 0; i < n; i++) setTimeout(() => addComment(cls, pick(pool)), i * 140);
+}
+function ambientComment() {
+  let pool = C.normal, cls = '';
+  if (S.special && S.phase !== 'awake') pool = C.massage; // 状態がバレないコメントだけ流す
+  else if (S.awayLeft > 0 && S.phase !== 'limit') pool = C.away;
+  else if (S.phase === 'limit') { pool = C.limit; cls = 'bad'; }
+  else if (S.angerLevel >= 3) { pool = C.insult3; cls = 'bad'; }
+  else if (S.sleepy > 55) pool = C.sleepy;
+  else if (S.phase === 'awake' && S.awakeStim === 'collab') { pool = C.collab; cls = 'hype'; }
+  else if (S.phase === 'awake' && S.awakeStim === 'bath') pool = C.bath;
+  else if (S.phase === 'awake' && S.awakeStim === 'workout') pool = C.workout;
+  else if (S.mood < CONFIG.mood.low && Math.random() < 0.6) { pool = C.lowMood; cls = 'bad'; }
+  else if (progress() > 0.85 && Math.random() < 0.5) pool = C.dawn;
+  else if (S.day >= 4 && Math.random() < 0.35) pool = C.normalLate;
+  addComment(cls, pick(pool));
+}
+
+/* ---------- 表情 ---------- */
+function currentExpr() {
+  if (S.ban) return { expr: 'banBath', ban: true, trunks: false, censor: 'steam', props: ['⁉️', ''] };
+  if (S.special) return { expr: S.phase === 'awake' ? 'massageAwake' : 'massage', props: ['', ''] };
+  if (S.phase === 'limit') return { expr: 'limit', props: ['💤', ''] };
+  if (S.angerLeft > 0 && S.angerLevel > 0) return { expr: 'angry' + S.angerLevel, props: [S.angerLevel >= 2 ? '💢💢' : '💢', ''] };
+  if (S.phase === 'awake') {
+    if (S.awakeStim === 'workout') return { expr: 'workout', props: ['', ''] };
+    if (S.awakeStim === 'bath' && S.bathEnterLeft > 0) return { expr: 'bathEnter', trunks: !S.bathNaked, censor: S.bathNaked ? 'stamp' : '', props: ['', ''] };
+    if (S.awakeStim === 'bath') return { expr: 'bath', floatStamp: S.bathNaked, props: ['♨️', ''] };
+    if (S.awakeStim === 'collab') return { expr: 'happy', props: ['✨', '🎉'] };
+  }
+  if (S.sleepy > 45) return { expr: 'sleepy', props: [S.sleepy > 70 ? '💤' : '', ''] };
+  if (S.mood >= CONFIG.mood.high) return { expr: 'happy', props: ['', ''] };
+  if (S.mood < CONFIG.mood.low) return { expr: 'sulky', props: ['💢', ''] };
+  return { expr: 'normal', props: ['', ''] };
+}
+// まぶたの下がり具合（0〜1）。眠気ゲージの代わりに、堀の目で眠さが分かる
+function lidAmount(expr) {
+  if (expr === 'sleepy') return 0.35 + 0.45 * clamp((S.sleepy - 45) / 55, 0, 1);
+  if (expr === 'normal' || expr === 'sulky') return (S.sleepy / 100) * 0.6;
+  if (expr === 'angry1') return 0.12;
+  if (expr === 'angry2' || expr === 'angry3') return 0.3;
+  if (expr === 'workout') return 0.15;
+  if (expr === 'bath') return 0.35;
+  if (expr === 'massageAwake') return 0.3;
+  return 0;
+}
+
+/* ---------- メインループ ---------- */
+function update(dt) {
+  S.stateTimer += dt;
+  if (S.state === 'dayStart') { if (S.stateTimer >= CONFIG.dayStartDuration) { setState('playing'); say(pick(S.mood < CONFIG.mood.low ? LINES.idleLow : LINES.idle), 2); } return; }
+  if (S.state === 'nap') {
+    $('#napBar i').style.width = clamp(S.stateTimer / CONFIG.napDuration, 0, 1) * 100 + '%';
+    if (S.stateTimer >= CONFIG.napDuration) { S.day++; startDay(); }
+    return;
+  }
+  if (S.state === 'ending') { // ゲームオーバー直前の余韻
+    if (S.stateTimer >= 1.2) setState('gameover');
+    return;
+  }
+  if (S.state !== 'playing') return;
+
+  // 風呂のBAN危機中は時間を止める
+  if (S.ban) {
+    S.ban.left -= dt;
+    el.banFill.style.width = clamp(S.ban.left / CONFIG.bath.banTimeLimit, 0, 1) * 100 + '%';
+    if (S.ban.left <= 0) gameOver('ban');
+    return;
+  }
+
+  S.t += dt;
+  if (S.t >= CONFIG.dayLength) { S.t = CONFIG.dayLength; endDay(); return; }
+
+  if (S.speedBoost.left > 0) { S.speedBoost.left -= dt; if (S.speedBoost.left <= 0) S.speedBoost.mult = 1; }
+  // 突発イベント
+  if (!S.special && S.specialQueue.length && S.t >= S.specialQueue[0].at) startSpecial(S.specialQueue.shift().ev);
+  if (S.special && (S.special.left -= dt) <= 0) endSpecial();
+  const lv = look().leave;
+  if (lv && !S.special) {
+    if (S.awayLeft > 0) { if ((S.awayLeft -= dt) <= 0) { scheduleLeave(); say(pick(LINES.back), 1.2); } }
+    else if ((S.leaveTimer -= dt) <= 0 && S.phase !== 'limit' && S.phase !== 'awake') {
+      S.awayLeft = rand(lv.awayMin, lv.awayMax);
+      say(pick(LINES.leave), 1.2);
+    }
+  }
+  const rise = dayParams().riseSpeed * S.speedBoost.mult * (S.special ? S.special.ev.riseMult : 1);
+
+  switch (S.phase) {
+    case 'idle':
+      S.attackTimer -= dt;
+      if (S.attackTimer <= 0) startAttack();
+      break;
+    case 'rising':
+      addSleepy(rise * dt);
+      break;
+    case 'limit':
+      S.graceLeft -= dt;
+      S.heartTimer -= dt;
+      if (S.special) {
+        // マッサージ中はいびきでしか寝落ちが分からない
+        S.snoreTimer -= dt;
+        if (S.snoreTimer <= 0) { Sound.play('snore'); say('ぐごごご…', 0.5); S.snoreTimer = S.special.ev.snoreInterval; }
+      } else if (S.heartTimer <= 0) { Sound.play('heart'); S.heartTimer = CONFIG.effects.heartInterval; }
+      if (S.graceLeft <= 0) { gameOver('sleep'); return; }
+      break;
+    case 'awake': {
+      S.awakeLeft -= dt;
+      const r = STIM[S.awakeStim].riseDuringAwake;
+      if (r > 0) addSleepy(rise * r * dt); // 筋トレ中も眠気が上がる
+      if (S.phase === 'awake' && S.awakeLeft <= 0) {
+        S.phase = 'idle'; S.awakeStim = null;
+        scheduleAttack();
+        if (S.pendingAttack) { S.pendingAttack = false; startAttack(); }
+      }
+      break;
+    }
+  }
+
+  CONFIG.stimuli.forEach(s => { if (S.cd[s.id] > 0) S.cd[s.id] = Math.max(0, S.cd[s.id] - dt); });
+  if (S.angerLeft > 0) { S.angerLeft -= dt; if (S.angerLeft <= 0) el.stream.classList.remove('shake'); }
+  if (S.bathEnterLeft > 0) S.bathEnterLeft -= dt;
+
+  // ランダムイベント（疲労が高いほど頻度アップ）
+  if (S.pendingEvent) {
+    S.pendingEvent.left -= dt;
+    if (S.pendingEvent.left <= 0) { const ev = S.pendingEvent.ev; S.pendingEvent = null; applyEvent(ev); scheduleEvent(); }
+  } else if (S.special) {
+    // 起きていても寝かけていても、同じ寝息を立てる
+    if (S.phase !== 'limit' && (S.breathTimer -= dt) <= 0) { say('すー…すー…', 0.9); S.breathTimer = rand(1.5, 3); }
+  } else if (S.phase !== 'limit') {
+    S.eventTimer -= dt * (1 + CONFIG.events.fatiguePerDay * (S.day - 1));
+    if (S.eventTimer <= 0) announceEvent();
+  }
+
+  // 小演出のタイマー
+  if (S.speechLeft > 0 && (S.speechLeft -= dt) <= 0) el.speech.className = '';
+  if (S.bannerLeft > 0 && (S.bannerLeft -= dt) <= 0) el.banner.classList.remove('show');
+  if (S.scLeft > 0 && (S.scLeft -= dt) <= 0) el.sc.classList.remove('show');
+  if (S.futonLeft > 0) S.futonLeft -= dt;
+  S.commentTimer -= dt;
+  if (S.commentTimer <= 0) {
+    ambientComment();
+    const fast = S.phase === 'limit' || S.sleepy > 55 ? 0.5 : 1;
+    S.commentTimer = rand(CONFIG.comments.intervalMin, CONFIG.comments.intervalMax) * fast;
+  }
+}
+
+function render() {
+  const playingLike = S.state === 'playing' || S.state === 'ending';
+  // HUD・時計・背景
+  const p = progress();
+  renderClock(p);
+  renderSky(p);
+  el.clock.classList.toggle('spurt', S.state === 'playing' && CONFIG.dayLength - S.t <= CONFIG.inDay.lastSpurt);
+  el.moodFill.style.width = S.mood + '%';
+  el.moodVal.textContent = Math.round(S.mood);
+  const fatigue = (S.day / CONFIG.totalDays) * 100 * (S.intervalMult > 1 ? 0.85 : 1);
+  el.fatFill.style.width = fatigue + '%';
+  el.fatVal.textContent = `Lv.${S.day}` + (S.intervalMult > 1 ? '↓' : '');
+
+  // ボタン
+  CONFIG.stimuli.forEach(s => {
+    const B = btns[s.id], u = S.uses[s.id], cd = S.cd[s.id] || 0;
+    B.rm.textContent = u === null || u === undefined ? '∞' : (u === 0 ? '使用済み' : `残り ${u}/${s.uses}`);
+    B.b.classList.toggle('empty', u === 0);
+    B.b.classList.toggle('cooling', cd > 0);
+    B.cd.style.height = s.cooldown > 0 ? (cd / s.cooldown) * 100 + '%' : '0';
+    B.cdt.textContent = cd > 0 ? cd.toFixed(1) : '';
+  });
+
+  // 配信画面の演出
+  const hideSleep = !!S.special; // マッサージ中は眠さを画面に出さない
+  const limit = S.phase === 'limit' && playingLike && !hideSleep;
+  const sl = playingLike && !hideSleep ? S.sleepy : 0;
+  const ef = CONFIG.effects;
+  const lk = look(), cue = lk.screenCue ?? 1; // 日によって眠気の画面演出を弱める（限界ゾーンの演出はそのまま）
+  el.vignette.style.opacity = limit ? ef.vignetteMax : (sl / 100) * ef.vignetteMax * cue;
+  el.darken.style.opacity = limit ? 0.35 : 0;
+  const blur = sl > ef.blurStart ? ((sl - ef.blurStart) / (100 - ef.blurStart)) * ef.blurMax * cue : 0;
+  el.stage.style.filter = blur > 0 ? `blur(${blur.toFixed(2)}px)` : '';
+  el.stage.classList.toggle('sway', sl >= ef.swayStart && cue >= 1);
+  el.horiWrap.classList.toggle('gone', S.awayLeft > 0 && playingLike);
+  const lidH = limit ? 8 + 42 * (1 - clamp(S.graceLeft / S.graceTotal, 0, 1)) : 0;
+  el.lidTop.style.height = el.lidBot.style.height = lidH + '%';
+  el.futon.classList.toggle('show', S.futonLeft > 0);
+  if (!S.ban) el.steam.className = 'ov' + (S.phase === 'awake' && S.awakeStim === 'bath' && !S.special ? ' on' : '');
+  el.collabWin.classList.toggle('show', S.phase === 'awake' && S.awakeStim === 'collab');
+
+  const ex = currentExpr();
+  const pose = FACE[ex.expr].pose;
+  el.stage.dataset.scene = pose === 'bath' || pose === 'enter' ? 'bath' : pose === 'massage' ? 'massage' : (lk.room || 'kitchen');
+  const props = lk.noZzz ? ex.props.map(x => (x === '💤' ? '' : x)) : ex.props;
+  hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, props });
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  if (!document.hidden) update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- 入力 ---------- */
+function onStart(fromDay = 1) { Sound.unlock(); newGame(fromDay); }
+$('#startBtn').addEventListener('click', () => onStart(1));
+$('#retryBtn').addEventListener('click', () => onStart(S.day));
+$('#retryFromStart').addEventListener('click', () => onStart(1));
+$('#retryBtn2').addEventListener('click', () => onStart(1));
+const toTitle = () => { setState('title'); $('#bestText').textContent = bestText(); renderDaySelect(); };
+$('#toTitleBtn').addEventListener('click', toTitle);
+$('#toTitleBtn2').addEventListener('click', toTitle);
+el.oke.addEventListener('pointerdown', e => { e.preventDefault(); hideOke(); });
+el.mute.addEventListener('click', () => {
+  Sound.muted = !Sound.muted; Sound.unlock();
+  storage.set(CONFIG.storageKeys.muted, Sound.muted ? '1' : '0');
+  el.mute.textContent = Sound.muted ? '🔇' : '🔊';
+});
+el.mute.textContent = Sound.muted ? '🔇' : '🔊';
+window.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  const st = CONFIG.stimuli.find(s => s.key === e.key);
+  if (st) { Sound.unlock(); useStimulus(st.id); return; }
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (S.ban) hideOke();
+    else if (S.state === 'gameover') onStart(S.day);
+    else if (['title', 'clear'].includes(S.state)) onStart(1);
+  }
+});
+
+$('#bestText').textContent = bestText();
+renderDaySelect();
+requestAnimationFrame(loop);
+
+// デバッグ・動作確認用（ゲームには影響しない）
+window.__SS = { S, CONFIG, useStimulus, hideOke, currentGrace, attackFactor, startDay, newGame, update, render };
+})();
+</script>
+</body>
+</html>
