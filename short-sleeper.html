@@ -58,7 +58,7 @@ const CONFIG = {
     { id: 'insult',  key: '1', name: '悪口スパチャ', icon: '💸', awakeMin: 2,  awakeMax: 4,  uses: null, cooldown: 1.5, riseDuringAwake: 0,   mood: -10 },
     { id: 'workout', key: '2', name: '筋トレ',       icon: '💪', awakeMin: 2,  awakeMax: 6,  uses: 3,    cooldown: 3,   riseDuringAwake: 0.5, mood: 0 },
     { id: 'bath',    key: '3', name: '風呂',         icon: '🛁', awakeMin: 4,  awakeMax: 8,  uses: 3,    cooldown: 4,   riseDuringAwake: 0,   mood: 0 },
-    { id: 'collab',  key: '4', name: 'コラボ',       icon: '🤝', awakeMin: 15, awakeMax: 15, uses: 1,    cooldown: 0,   riseDuringAwake: 0,   mood: 40 },
+    { id: 'kuiya',   key: '4', name: 'クイヤ',       icon: '❓', awakeMin: 6,  awakeMax: 6,  uses: 2,    cooldown: 5,   riseDuringAwake: 0,   mood: 0 },
   ],
 
   insult: {
@@ -71,8 +71,26 @@ const CONFIG = {
     banTimeLimit: 1.5,  // 「スタンプで隠せ！」の制限時間（秒）
     enterDuration: 1.2, // 湯船に入るアニメーションの長さ（秒）
   },
-  collab: {
-    attackIntervalBonus: 1.25, // 疲労の少し回復：その日の残りの発作間隔に掛ける倍率
+  // クイヤボタン：押すとランダムでイベントが起きる。中身によって効果が変わる（当たり・ハズレあり）
+  //   weight: 出やすさ / awake: 起きていられる秒数（日ごとの倍率がかかる） / mood: 機嫌
+  //   bonus: 追加ポイント（バズ） / afterAttack: 効果が切れた直後に眠気の発作が来る（ハズレ）
+  //   guest: 乱入してくる人（右下の窓に出る） / lines: 乱入した人のセリフ / hori: 堀のセリフ（順番にしゃべる）
+  kuiya: {
+    events: [
+      { id: 'kuiya', weight: 3, banner: '❓ 謎のスパチャ「クイヤ」が届いた！',
+        sc: '最近家の外にクイヤが大量発生し夏だな～と感じます',
+        hori: ['あーあー、クイヤか', 'なんかね、穴掘ったりするやつでしたっけ', '千葉とかに住んでた時にそういうのあった気がする'],
+        awake: 7, mood: 0, bonus: 200, bonusLabel: '🔥 存在しない動物を知ったかぶり…切り抜かれてバズった！' },
+      { id: 'yupis', weight: 2, banner: '👩‍💼 霞ヶ浦OLユーピスが乱入！', guest: '霞ヶ浦OLユーピス', icon: '👩‍💼', sub: '霞ヶ浦から乱入',
+        lines: ['霞ヶ浦からお邪魔しまーす！', '堀さん、寝たら負けですよ〜！'],
+        hori: ['誰かができてるってことは、僕もできるんじゃないか'], awake: 9, mood: 20 },
+      { id: 'takoyaki', weight: 2, banner: '🐙 たこやきしょうがたこ焼きを差し入れ！', guest: 'たこやきしょう', icon: '🐙', sub: 'たこ焼き差し入れ',
+        lines: ['焼きたてのたこ焼き持ってきましたー！', '熱いうちにどうぞ！'],
+        hori: ['うまっ…おなかいっぱい…'], awake: 3, mood: 10, afterAttack: true },
+      { id: 'milkle', weight: 2, banner: '🥛 朝からみるくるが登場！', guest: '朝からみるくる', icon: '🥛', sub: '朝から元気',
+        lines: ['おはようございまーす！朝ですよー！', '朝から元気いきましょう！'],
+        hori: ['起きた瞬間からすべてに感謝することで、不幸になることはない'], awake: 12, mood: 10 },
+    ],
   },
 
   // 起こすタイミングの評価。限界ゾーンの猶予が残り何割で起こしたかで判定（ギリギリほど高評価）
@@ -134,8 +152,8 @@ const CONFIG = {
       endLine: '寝てたでしょ、今。薄目が開いてるだけで', endComment: '── 整体タイム終了 ──',
       snoreInterval: 0.6 },
     { id: 'tora', kind: 'tora', day: 4, at: [10, 28], duration: 14, riseMult: 1, attackMult: 1,
-      block: ['workout', 'bath', 'collab'], blockedLine: '🔒 虎の前では使えない！（悪口スパチャだけ使える）',
-      banner: '🐯 令和の虎に志願者として出演！ 筋トレ・風呂・コラボ封印', partner: '虎',
+      block: ['workout', 'bath', 'kuiya'], blockedLine: '🔒 虎の前では使えない！（悪口スパチャだけ使える）',
+      banner: '🐯 令和の虎に志願者として出演！ 筋トレ・風呂・クイヤ封印', partner: '虎',
       partnerLines: ['30分睡眠って、エビデンスあるんですか？', 'で、そのサプリで何がしたいの？', '希望額500万の根拠は？',
                      '正直、信用できないんですよね', 'ノーマネーでフィニッシュです'],
       horiLines: ['なんで断言できる？', 'あの、ナメてます？', 'お医者さんなんて、ただの医者ですからね', '誰かができてるってことは、僕もできるんじゃないか'],
@@ -169,8 +187,10 @@ const CONFIG = {
     { sunglasses: true, room: 'curtain', screenCue: 0.6, noZzz: true, note: 'サングラスで目が見えない…' },
     { sunglasses: true, room: 'curtain', screenCue: 0.5, noZzz: true, note: 'サングラス＋落ち着きがない（よく画面から消える）',
       leave: { intervalMin: 4, intervalMax: 9, awayMin: 2, awayMax: 4.5 } },
-    { eggChair: true, eyesShut: true, room: 'curtain', screenCue: 0.4, noZzz: true, note: '卵型チェアでくつろぎモード…そもそも目が開いてない' },
-    { eggChair: true, eyesShut: true, room: 'curtain', screenCue: 0.4, noZzz: true, note: '卵型チェアでくつろぎモード…そもそも目が開いてない' },
+    { eggChair: true, eyesShut: true, room: 'curtain', screenCue: 0.4, noZzz: true, note: '卵型チェアでくつろぎモード…そもそも目が開いてない（ときどき画面から消える）',
+      leave: { intervalMin: 6, intervalMax: 12, awayMin: 2, awayMax: 4 } },
+    { eggChair: true, eyesShut: true, room: 'curtain', screenCue: 0.4, noZzz: true, note: '卵型チェアでくつろぎモード…そもそも目が開いてない（ときどき画面から消える）',
+      leave: { intervalMin: 6, intervalMax: 12, awayMin: 2, awayMax: 4 } },
   ],
 
   // 7 目の下のクマ（Day1〜7）。opacity: 不透明度 / scale: 大きさ
@@ -227,12 +247,12 @@ const ASSETS = {
     normal: null, sleepy: null, limit: null, angry: null,
     workout: null, bath: null, happy: null, massage: null,
   },
-  collabPartner: null,   // コラボ相手の画像
+  guestIcons: {},        // クイヤの乱入ゲストの画像（{ yupis: 'path.png' } のように指定。なければ絵文字）
   background: null,      // 配信部屋の背景画像（指定すると時刻による空の変化は使わない）
   // 画像に差し替えたとき、クマレイヤーを重ねる位置（立ち絵の枠に対する%）。画像に合わせて調整する
   kumaLayout: { y: '38%', leftX: '36%', rightX: '54%', w: '10%', h: '4%' },
   // 画像がないときの仮表示（絵文字）
-  fallback: { collabPartner: '🐥' },
+  fallback: {},
 };
 </script>
 <style>
@@ -329,6 +349,8 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 #live::before{content:"●";margin-right:4px;animation:blink 1s steps(2) infinite}
 #horiWrap{position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:88%;aspect-ratio:200/250;transition:left .7s ease-in-out}
 #horiWrap.gone{left:-70%}
+#emptyChair{position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:88%;aspect-ratio:200/250;display:none}
+#emptyChair.show{display:block}
 #stage.sway #horiWrap{animation:sway 2.2s ease-in-out infinite}
 #stream.shake{animation:shake .12s linear infinite}
 @keyframes sway{0%,100%{transform:translateX(-50%) rotate(0)}30%{transform:translateX(-52%) rotate(-3deg)}70%{transform:translateX(-48%) rotate(3deg)}}
@@ -487,7 +509,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 .stim[data-id=insult]{background:#3b2131}
 .stim[data-id=workout]{background:#21313b}
 .stim[data-id=bath]{background:#213b39}
-.stim[data-id=collab]{background:#3b3621}
+.stim[data-id=kuiya]{background:#3b3621}
 
 /* 全画面スクリーン */
 .screen{position:fixed;inset:0;z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;
@@ -651,6 +673,12 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
         </svg>
         <div id="futonProp">🛏️</div>
         <div id="toraBoard"></div>
+        <!-- 堀が画面から消えている間も卵型チェアは残る -->
+        <svg id="emptyChair" viewBox="0 0 200 250" aria-hidden="true">
+          <ellipse cx="100" cy="138" rx="94" ry="122" fill="#f4f1ec" stroke="#3b2321" stroke-width="2.5"/>
+          <ellipse cx="100" cy="146" rx="78" ry="104" fill="#c8202a" stroke="#3b2321" stroke-width="2.5"/>
+          <path d="M34,216 Q100,234 166,216 L164,232 Q100,252 36,232 Z" fill="#f4f1ec" stroke="#3b2321" stroke-width="2.5" stroke-linejoin="round"/>
+        </svg>
         <!-- 突発イベントの相手（架空のキャラ） -->
         <div id="guest">
           <svg class="g-tora" viewBox="0 0 200 250" aria-hidden="true">
@@ -852,8 +880,6 @@ const LINES = {
   workout: ['スポーツをするか、食前1時間にコーヒーを飲めば眠気は防げる', '活動ごとに脳を使い分けることが、脳を休ませることにつながる'],
   bath:    ['起きた瞬間からすべてに感謝することで、不幸になることはない', '自分に合う生き方は、自分で探すしかない'],
   banSafe: ['あっぶな！！象さんありがとう！', 'セーフ！スタンプ職人に感謝！'],
-  collab:  ['今日はスペシャルゲスト！ぴよ太さん！', 'うわ本物や！テンション上がる〜！'],
-  partner: ['ぴよぴよ〜！ミラクル☆ぴよ太だよ！', '堀くん顔色やばくない？w'],
   leave:   ['ちょっとプロテイン取ってくるわ', 'トイレ行ってくる！', '充電器どこやっけ…'],
   back:    ['ただいま〜', 'おまたせ！', '戻ったで〜'],
 };
@@ -870,7 +896,10 @@ const C = {
   insult3: ['やばいやばい', '空気変わった', 'スパチャやめとけって', 'ガチギレ寸前', 'もうやめたれ', '目がマジ'],
   insult:  ['スパチャ悪口で草', 'ひどいw', 'それは言いすぎ', 'いいぞもっとやれ'],
   lowMood: ['機嫌悪くて草', 'ピリピリしてる', '圧がすごい', 'こっわ', '雰囲気わるっ'],
-  collab:  ['ぴよ太きたあああ', 'コラボ神回', 'ぴよ太かわいい', '堀くん嬉しそうw', '同接えぐい'],
+  kuiya:   ['クイヤ知ってて草', 'クイヤは存在しないぞ', '穴掘るやつw', '千葉にいたの！？', '知ったかぶりで草', '切り抜き確定'],
+  yupis:   ['ユーピスきたあああ', '霞ヶ浦から！？', 'OLパワー', '乱入神回', '同接えぐい'],
+  takoyaki: ['たこ焼きうまそう', '飯テロ', 'それ食べたら寝るやつ', '満腹は危険w', 'たこやきしょうナイス…？'],
+  milkle:  ['みるくるきた！', '朝から元気すぎ', 'おはよう〜', 'テンション高くて草', '目ぇ覚めるわ'],
   bath:    ['風呂配信!?', '湯気仕事しろ', 'のぼせるなよw', '入浴中で草', 'アヒルかわいい'],
   workout: ['筋トレ配信助かる', 'フォーム綺麗', 'あと10回！', 'プロテイン飲め', '上腕二頭筋えぐい'],
   ban:     ['スタンプ！スタンプ！！', '履いてないやん！？', 'カメラ止めろ', 'アウトアウト'],
@@ -948,8 +977,11 @@ const Voice = {
     this.unlocked = true;
     try { const u = new SpeechSynthesisUtterance(''); u.volume = 0; speechSynthesis.speak(u); } catch (e) { /* 無視 */ }
   },
-  speak(text, pitch = CONFIG.voice.pitch) {
+  lockUntil: 0,
+  // priority: 大事なセリフ。言い終わるまで他のセリフで割り込まない
+  speak(text, pitch = CONFIG.voice.pitch, priority = false) {
     if (!this.ok || !CONFIG.voice.enabled || Sound.muted) return;
+    if (!priority && performance.now() < this.lockUntil) return;
     const t = text.replace(/[（(][^）)]*[）)]/g, '').replace(/[^\p{L}\p{N}、。！？!?ー〜]/gu, '');
     if (!/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(t)) return; // 「……zz」などは読まない
     if (!this.voice) this.pickVoice();
@@ -958,6 +990,7 @@ const Voice = {
       const u = new SpeechSynthesisUtterance(t);
       u.lang = 'ja-JP'; if (this.voice) u.voice = this.voice;
       u.rate = CONFIG.voice.rate; u.pitch = pitch; u.volume = CONFIG.voice.volume;
+      if (priority) { this.lockUntil = performance.now() + 8000; u.onend = u.onerror = () => { this.lockUntil = 0; }; }
       speechSynthesis.speak(u);
     } catch (e) { /* 無視 */ }
   },
@@ -1237,14 +1270,14 @@ function buildHori(container) {
   let cur = '';
   return {
     // trunks: 水着を着ているか / censor: 'steam'（湯気で隠す）・'stamp'（象さんスタンプ） / floatStamp: 湯船にスタンプが浮く
-    set({ expr, day, lid = 0, ban = false, trunks = true, censor = '', floatStamp = false, shirtless = false, props: pr = ['', ''] }) {
+    set({ expr, day, lid = 0, ban = false, trunks = true, censor = '', floatStamp = false, shirtless = false, noChair = false, props: pr = ['', ''] }) {
       const kuma = CONFIG.kuma[day - 1] || CONFIG.kuma[0];
-      const key = [expr, day, ban, trunks, censor, floatStamp, shirtless, pr.join()].join('|');
+      const key = [expr, day, ban, trunks, censor, floatStamp, shirtless, noChair, pr.join()].join('|');
       if (key !== cur) {
         cur = key;
         const lk = CONFIG.looks[day - 1] || {};
         const f = { ...FACE[expr], trunks: trunks ? 1 : '', censor, float: floatStamp ? 1 : '',
-          acc: lk.eyepatch ? 'patch' : lk.sunglasses ? 'glasses' : '', chair: lk.eggChair ? 'egg' : '' };
+          acc: lk.eyepatch ? 'patch' : lk.sunglasses ? 'glasses' : '', chair: lk.eggChair && !noChair ? 'egg' : '' };
         if (lk.eyesShut && f.eyes === 'open') f.eyes = 'closed'; // 目が開いていないので、眠いのか分からない
         parts.forEach(p => { p.n.style.display = String(f[p.key] ?? '') === p.v ? '' : 'none'; });
         const anger = /^angry(\d)$/.exec(expr);
@@ -1274,7 +1307,7 @@ const el = {
   flash: $('#flash'), steam: $('#steam'), warnMarks: $('#warnMarks'),
   speech: $('#speech'), banner: $('#banner'), sc: $('#superchat'), collabWin: $('#collabWin'),
   comments: $('#commentList'), controls: $('#controls'),
-  gradePop: $('#gradePop'), viewers: $('#viewers'),
+  gradePop: $('#gradePop'), emptyChair: $('#emptyChair'), viewers: $('#viewers'),
   contestLayer: $('#contestLayer'), cMe: $('#cMe'), cRival: $('#cRival'), cFill: $('#cTimer>i'),
   guest: $('#guest'), guestSpeech: $('#guestSpeech'), toraBoard: $('#toraBoard'), banSub: $('#banSub'),
   banLayer: $('#banLayer'), banFill: $('#banTimer>i'), oke: $('#okeBtn'),
@@ -1286,9 +1319,6 @@ const titleHori = buildHori($('#titleHori'));
 const dayHori = buildHori($('#dayHori'));
 titleHori.set({ expr: 'happy', day: 1 });
 if (ASSETS.background) { el.stage.classList.add('has-bg'); el.stage.style.backgroundImage = `url("${ASSETS.background}")`; }
-el.collabWin.innerHTML = ASSETS.collabPartner
-  ? `<img src="${ASSETS.collabPartner}" alt="">`
-  : `${ASSETS.fallback.collabPartner}<small>ミラクル☆ぴよ太<br>（登録者280万人）</small>`;
 
 // 時計の目盛り
 $('#clockTicks').innerHTML = Array.from({ length: 12 }, (_, i) => {
@@ -1371,7 +1401,7 @@ function startDay() {
   S.intervalMult = 1; S.speedBoost = { mult: 1, left: 0 };
   S.insultStreak = 0; S.angerLeft = 0; S.angerLevel = 0;
   S.pendingEvent = null; S.ban = null; S.bathEnterLeft = 0; S.bathNaked = false;
-  S.special = null; S.contest = null; S.banForce = false;
+  S.special = null; S.contest = null; S.banForce = false; S.lineQueue = []; S.kuiyaEv = null;
   S.shirtless = false; S.insultLimit = CONFIG.insult.limit;
   S.awayLeft = 0; scheduleLeave();
   S.specialQueue = CONFIG.specialEvents.filter(e => e.day === S.day).map(ev => ({ ev, at: rand(ev.at[0], ev.at[1]) }));
@@ -1567,15 +1597,21 @@ function judge(success) {
   if (g.id === 'bad') burstComments(C.bad, 'bad', 2);
 }
 
+function pickWeighted(list) {
+  let r = Math.random() * list.reduce((a, e) => a + e.weight, 0);
+  for (const e of list) { if ((r -= e.weight) < 0) return e; }
+  return list[0];
+}
 function applyAwake(st) {
   const success = S.phase === 'limit';
   judge(success);
-  let dur = rand(st.awakeMin, st.awakeMax) * dayParams().awakeScale;
+  const kv = st.id === 'kuiya' ? (S.kuiyaEv = pickWeighted(CONFIG.kuiya.events)) : null;
+  let dur = (kv ? kv.awake : rand(st.awakeMin, st.awakeMax)) * dayParams().awakeScale;
   if (success) {
     S.sleepy = 0;
     flash(); Sound.play('success');
     burstComments(C.success, 'hype', 3);
-    if (st.id !== 'insult') say(pick(LINES.wake), 1.6);
+    if (st.id !== 'insult' && st.id !== 'kuiya') say(pick(LINES.wake), 1.6);
   } else {
     S.sleepy *= CONFIG.flying.sleepyKeep;
     dur *= CONFIG.flying.awakeFactor;
@@ -1588,11 +1624,50 @@ function applyAwake(st) {
 
   if (st.id === 'workout') { say(pick(LINES.workout), 1.8); addComment('', pick(C.workout)); }
   if (st.id === 'bath') { if (!S.bathNaked) say(pick(LINES.bath), 1.8); addComment('', pick(C.bath)); }
-  if (st.id === 'collab') {
-    S.intervalMult = CONFIG.collab.attackIntervalBonus;
-    say(pick(LINES.collab), 2.2);
-    setTimeout(() => { if (S.state === 'playing' && S.awakeStim === 'collab') addComment('sc', pick(LINES.partner), 'ミラクル☆ぴよ太'); }, 900);
-    burstComments(C.collab, 'hype', 3);
+  if (kv) startKuiya(kv);
+}
+
+/* ---------- クイヤボタンのランダムイベント ---------- */
+function startKuiya(kv) {
+  showBanner(kv.banner, 2.4);
+  Sound.play('event');
+  S.mood = clamp(S.mood + (kv.mood || 0), 0, 100);
+  burstComments(C[kv.id], 'hype', 3);
+  S.lineQueue = [];
+  let t = 0.3;
+  if (kv.sc) {
+    el.sc.querySelector('.sc-h').textContent = `夏の視聴者  ¥500`;
+    el.sc.querySelector('.sc-b').textContent = kv.sc;
+    el.sc.classList.add('show'); S.scLeft = 3;
+    addComment('sc', kv.sc, '夏の視聴者');
+    t = 1.6;
+  }
+  if (kv.guest) {
+    const img = ASSETS.guestIcons[kv.id];
+    el.collabWin.innerHTML = (img ? `<img src="${img}" alt="">` : kv.icon) + `<small>${kv.guest}<br>（${kv.sub}）</small>`;
+    kv.lines.forEach((line, i) => S.lineQueue.push({ at: t + i * 2.2, guest: kv.guest, text: line }));
+    t += kv.lines.length * 2.2;
+  }
+  kv.hori.forEach((line, i) => S.lineQueue.push({ at: t + i * 2.4, text: line }));
+  if (kv.bonus) S.lineQueue.push({ at: t + kv.hori.length * 2.4, bonus: kv });
+  if (kv.afterAttack) S.pendingAttack = true;
+}
+// 順番に流すセリフ（乱入ゲスト→堀の順）
+function updateLineQueue(dt) {
+  if (!S.lineQueue || !S.lineQueue.length) return;
+  S.lineQueue.forEach(q => { q.at -= dt; });
+  while (S.lineQueue.length && S.lineQueue[0].at <= 0) {
+    const q = S.lineQueue.shift();
+    if (q.bonus) {
+      S.score += q.bonus.bonus;
+      showBanner(q.bonus.bonusLabel, 2.6);
+      burstComments(C.kuiya, 'hype', 4);
+    } else if (q.guest) {
+      addComment('sc', q.text, q.guest);
+      Voice.speak(q.text, 1.3);
+    } else if (S.phase !== 'limit' && S.awayLeft <= 0) {
+      say(q.text, 2.2);
+    }
   }
 }
 
@@ -1770,8 +1845,10 @@ function specialTalk(dt) {
   el.guestSpeech.innerHTML = `<b>${ev.partner}</b>`;
   el.guestSpeech.append(line);
   el.guestSpeech.classList.add('show');
-  sp.guestLeft = Math.max(1.6, line.length * 0.13);
-  Voice.speak(line, 1.25);
+  const key = line === ev.startLine; // 「水着隠しときました」は最後までしっかり聞かせる
+  sp.guestLeft = Math.max(key ? 4 : 1.6, line.length * 0.13);
+  Voice.speak(line, 1.25, key);
+  if (key) { sp.lineTimer += 2; showBanner('😱 しみぺにが堀の水着を隠した！ 今日の風呂は100%履き忘れ', 4); }
   addComment('sc', line, ev.partner);
   if (ev.critMood) S.mood = clamp(S.mood + ev.critMood, 0, 100);
   if (ev.critSleepy && (S.phase === 'idle' || S.phase === 'rising')) addSleepy(ev.critSleepy);
@@ -1812,7 +1889,7 @@ function ambientComment() {
   else if (S.phase === 'limit') { pool = C.limit; cls = 'bad'; }
   else if (S.angerLevel >= 3) { pool = C.insult3; cls = 'bad'; }
   else if (S.sleepy > 55) pool = C.sleepy;
-  else if (S.phase === 'awake' && S.awakeStim === 'collab') { pool = C.collab; cls = 'hype'; }
+  else if (S.phase === 'awake' && S.awakeStim === 'kuiya' && S.kuiyaEv) { pool = C[S.kuiyaEv.id]; cls = 'hype'; }
   else if (S.phase === 'awake' && S.awakeStim === 'bath') pool = C.bath;
   else if (S.phase === 'awake' && S.awakeStim === 'workout') pool = C.workout;
   else if (S.mood < CONFIG.mood.low && Math.random() < 0.6) { pool = C.lowMood; cls = 'bad'; }
@@ -1832,7 +1909,7 @@ function currentExpr() {
     if (S.awakeStim === 'workout') return { expr: 'workout', props: ['', ''] };
     if (S.awakeStim === 'bath' && S.bathEnterLeft > 0) return { expr: 'bathEnter', trunks: !S.bathNaked, censor: S.bathNaked ? 'stamp' : '', props: ['', ''] };
     if (S.awakeStim === 'bath') return { expr: 'bath', floatStamp: S.bathNaked, props: ['♨️', ''] };
-    if (S.awakeStim === 'collab') return { expr: 'happy', props: ['✨', '🎉'] };
+    if (S.awakeStim === 'kuiya') return S.kuiyaEv?.id === 'kuiya' ? { expr: 'normal', props: ['❓', ''] } : { expr: 'happy', props: ['✨', '🎉'] };
   }
   if (S.sleepy > 45) return { expr: 'sleepy', props: [S.sleepy > 70 ? '💤' : '', ''] };
   if (S.mood >= CONFIG.mood.high) return { expr: 'happy', props: ['', ''] };
@@ -1929,6 +2006,7 @@ function update(dt) {
   }
 
   CONFIG.stimuli.forEach(s => { if (S.cd[s.id] > 0) S.cd[s.id] = Math.max(0, S.cd[s.id] - dt); });
+  updateLineQueue(dt);
   if (S.angerLeft > 0) { S.angerLeft -= dt; if (S.angerLeft <= 0) el.stream.classList.remove('shake'); }
   if (S.bathEnterLeft > 0) S.bathEnterLeft -= dt;
 
@@ -2007,7 +2085,7 @@ function render() {
   el.lidTop.style.height = el.lidBot.style.height = lidH + '%';
   el.futon.classList.toggle('show', S.futonLeft > 0);
   if (!S.ban) el.steam.className = 'ov' + (S.phase === 'awake' && S.awakeStim === 'bath' && !massaging() ? ' on' : '');
-  el.collabWin.classList.toggle('show', S.phase === 'awake' && S.awakeStim === 'collab');
+  el.collabWin.classList.toggle('show', S.phase === 'awake' && S.awakeStim === 'kuiya' && !!S.kuiyaEv?.guest);
 
   const ex = currentExpr();
   const pose = FACE[ex.expr].pose;
@@ -2018,7 +2096,8 @@ function render() {
   el.stream.classList.toggle('withGuest', !!gk);
   el.stage.dataset.scene = pose === 'bath' || pose === 'enter' ? 'bath' : pose === 'massage' ? 'massage' : gk === 'tora' ? 'tora' : (lk.room || 'kitchen');
   const props = lk.noZzz ? ex.props.map(x => (x === '💤' ? '' : x)) : ex.props;
-  hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, shirtless: S.shirtless, props });
+  hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, shirtless: S.shirtless, noChair: S.awayLeft > 0, props });
+  el.emptyChair.classList.toggle('show', !!lk.eggChair && S.awayLeft > 0 && playingLike);
 }
 
 let last = performance.now();
