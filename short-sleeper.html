@@ -75,6 +75,20 @@ const CONFIG = {
     attackIntervalBonus: 1.25, // 疲労の少し回復：その日の残りの発作間隔に掛ける倍率
   },
 
+  // 起こすタイミングの評価。限界ゾーンの猶予が残り何割で起こしたかで判定（ギリギリほど高評価）
+  //   maxLeft: 猶予の残りがこの割合以下なら、その評価 / points: もらえるポイント
+  //   bad: 眠くないとき（限界ゾーン前・起きている間）に刺激を入れたとき
+  //   viewers: 同接数 = base + ポイント × perPoint（min を下回らない）
+  score: {
+    grades: [
+      { id: 'excellent', label: 'EXCELLENT!!', maxLeft: 0.25, points: 300 },
+      { id: 'great',     label: 'GREAT!',      maxLeft: 0.6,  points: 150 },
+      { id: 'good',      label: 'GOOD',        maxLeft: 1.0,  points: 50 },
+    ],
+    bad: { id: 'bad', label: 'BAD…', points: -100 },
+    viewers: { base: 1200, perPoint: 3, min: 30 },
+  },
+
   // 4-7 機嫌
   mood: { initial: 70, low: 30, high: 85 },
 
@@ -101,7 +115,17 @@ const CONFIG = {
   //   riseMult: 眠気上昇速度の倍率 / attackMult: 発作間隔の倍率 / firstAttack: 開始から最初の発作までの秒数
   //   block: 使えなくなる刺激 / lineInterval: 相手がしゃべる間隔（秒） / partnerLines: 相手のセリフ / horiLines: 堀の言い返し
   //   critSleepy: ダメ出し1回で増える眠気 / critMood: ダメ出し1回で下がる機嫌
+  //   banForce: 発生後はその日ずっと風呂で水着を履き忘れる（BAN確率100%）
+  //   contest: 懸垂勝負（duration: 秒 / rivalRate: 相手の1秒あたりの回数 / win・lose: 勝ち負けの効果）
   specialEvents: [
+    { id: 'takosu', kind: 'takosu', day: 1, at: [14, 26], duration: 8, riseMult: 1, attackMult: 1,
+      banner: '👨‍⚕️ たこす先生と睡眠論争！', partner: 'たこす先生',
+      partnerLines: ['睡眠は鍛えられない！医学的に無理！', '30分睡眠なんてありえないね', '君、それ寝てるよ', '医者の言うことを聞きなさい'],
+      horiLines: ['なんで断言できる？', 'あの、ナメてます？', '普通に喋ってもらっていいですか？', 'お前がな！'],
+      lineInterval: 2.2, rageBanner: '🔥 たこす先生ブチギレ！懸垂で勝負だ！！', rageLine: 'もう怒った！懸垂で勝負だ！！',
+      contest: { duration: 8, rivalRate: 4.6, winMood: 30, winAwake: 8, loseSleepy: 40, loseMood: -20 },
+      winLine: 'くっ…筋肉だけは認める…', loseLine: 'ほら見なさい、睡眠不足だ', winHori: '誰かができてるってことは、僕もできるんじゃないか',
+      endComment: '── たこす先生との論争 終了 ──' },
     { id: 'massage', kind: 'massage', day: 2, at: [12, 34], duration: 18, riseMult: 3, attackMult: 0.3, firstAttack: [0.3, 2.0],
       banner: '💆 突然の整体タイム！', partner: '整体師・もみ山さん',
       partnerLines: ['はーい、ほぐしていきますね〜', '首こってますね〜', '…寝てましたよね？'],
@@ -122,6 +146,13 @@ const CONFIG = {
       horiLines: ['お前がな！', 'あの、ナメてます？', '普通に喋ってもらっていいですか？', 'なんで断言できる？'],
       lineInterval: 2.6, critSleepy: 10, critMood: -6,
       endLine: '睡眠時間は自由', endComment: '── ダメ出しタイム終了 ──' },
+    { id: 'shimipeni', kind: 'shimipeni', day: 6, at: [8, 22], duration: 14, riseMult: 1, attackMult: 1, banForce: true,
+      banner: '📱 しみぺにとコラボ！（今日はもう水着がない…）', partner: 'しみぺに',
+      startLine: 'あ、堀さんの水着、隠しときましたw',
+      partnerLines: ['堀さん、今の絶対寝てましたよね？', '視聴者さん、堀さん目開いてないです！', 'ちょっとこれ見てくださいよ', '次お風呂配信いきましょうよ！'],
+      horiLines: ['寝るか寝ないかはどうでも良い', 'マイクロスリープである', 'あの、ナメてます？', '睡眠時間は自由'],
+      lineInterval: 3,
+      endLine: 'キャビテーションを紹介するためにこの場を設けている', endComment: '── しみぺにコラボ終了（水着は見つからない…） ──' },
   ],
 
   // 日ごとの堀の見た目（目が見えにくくなるほど難しい）
@@ -182,7 +213,7 @@ const CONFIG = {
   //   tempo: BPM（Dayが進むごとに tempoPerDay ずつ速くなる） / volume: 音量
   bgm: { enabled: true, volume: 0.05, tempo: 88, tempoPerDay: 3 },
 
-  storageKeys: { bestDay: 'shortSleeper.bestDay', clearedDay: 'shortSleeper.clearedDay', muted: 'shortSleeper.muted' },
+  storageKeys: { bestDay: 'shortSleeper.bestDay', bestScore: 'shortSleeper.bestScore', clearedDay: 'shortSleeper.clearedDay', muted: 'shortSleeper.muted' },
 };
 
 /* =====================================================================
@@ -244,7 +275,35 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 #guest{position:absolute;left:2%;bottom:0;height:80%;aspect-ratio:200/250;display:none;z-index:1}
 #guest.show{display:block}
 #guest svg{display:none;width:100%;height:100%}
-#guest[data-kind=tora] .g-tora,#guest[data-kind=critic] .g-critic{display:block}
+#guest[data-kind=tora] .g-tora,#guest[data-kind=critic] .g-critic,#guest[data-kind=takosu] .g-takosu,#guest[data-kind=shimipeni] .g-shimipeni{display:block}
+#guest .tk-up,#guest .tk-rage{display:none}
+#guest.pull .tk-up,#guest.angry .tk-rage{display:inline}
+#guest.pull .tk-down{display:none}
+#guest.angry .tk-face{fill:#ff9a86}
+.hop{animation:hop .22s ease-out}
+@keyframes hop{50%{transform:translateY(-9%)}}
+#gradePop{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);z-index:12;pointer-events:none;text-align:center;font-weight:900;opacity:0;white-space:nowrap}
+#gradePop b{display:block;font-size:clamp(30px,9vw,60px);letter-spacing:.04em;-webkit-text-stroke:2px #3b2321;paint-order:stroke fill}
+#gradePop span{font-size:clamp(14px,3.8vw,22px);color:#fff;text-shadow:0 0 4px #000,0 0 2px #000}
+#gradePop.go{animation:gradePop 1.2s ease-out}
+#gradePop.excellent b{color:#ffd400}#gradePop.great b{color:#4ade80}#gradePop.good b{color:#60a5fa}#gradePop.bad b{color:#a1a1aa}
+@keyframes gradePop{0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}
+  30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-75%)}}
+#viewers{margin-left:6px;font-weight:800}
+#viewers.up{color:#fff59d}#viewers.down{color:#d4d4d8}
+#contestLayer{position:fixed;inset:0;z-index:90;display:none;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;
+  padding:0 16px max(24px,env(safe-area-inset-bottom));background:rgba(255,120,0,.1)}
+#contestLayer.show{display:flex}
+#contestLayer .cTitle{position:absolute;top:12%;left:0;right:0;text-align:center;font-size:clamp(26px,8vw,50px);font-weight:900;color:#fff;
+  text-shadow:0 0 10px #f97316,0 0 2px #000}
+#contestLayer .cScore{background:#000b;color:#fff;border-radius:14px;padding:6px 16px;font-size:clamp(16px,4.5vw,24px);font-weight:900}
+#contestLayer .cScore b{font-size:1.5em;color:#fde047;margin:0 4px}
+#pullBtn{width:min(92vw,460px);min-height:120px;border:none;border-radius:22px;background:#f97316;color:#fff;
+  font-size:clamp(26px,7vw,40px);font-weight:900;box-shadow:0 6px 0 #9a3412;touch-action:manipulation}
+#pullBtn:active{transform:translateY(3px);box-shadow:0 3px 0 #9a3412}
+#pullBtn small{display:block;font-size:13px;font-weight:700}
+#cTimer{width:min(92vw,460px);height:12px;background:#0008;border-radius:6px;overflow:hidden}
+#cTimer i{display:block;height:100%;background:#f97316;width:100%}
 #stream.withGuest #horiWrap{left:68%}
 #stream.withGuest #speech{left:auto;right:3%;top:13%;transform:none;max-width:46%}
 #guestSpeech{position:absolute;left:21%;top:4%;max-width:38%;background:#fff;color:#222;border:3px solid #4a2c2a;border-radius:12px;
@@ -607,6 +666,42 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
             <circle cx="112" cy="168" r="9" fill="#f6d2ae" stroke="#4a2c2a" stroke-width="3"/>
             <text x="76" y="160" text-anchor="middle" font-size="22" font-weight="900" fill="#f5c542">虎</text>
           </svg>
+          <svg class="g-takosu" viewBox="0 0 200 250" aria-hidden="true">
+            <rect x="68" y="196" width="26" height="54" rx="8" fill="#3b4566"/><rect x="106" y="196" width="26" height="54" rx="8" fill="#3b4566"/>
+            <path d="M54 126 Q100 106 146 126 L150 200 L50 200 Z" fill="#141416" stroke="#4a2c2a" stroke-width="4"/>
+            <g class="tk-down">
+              <path d="M58 132 L46 178" stroke="#141416" stroke-width="22" stroke-linecap="round"/>
+              <g transform="rotate(10 120 176)"><rect x="96" y="160" width="56" height="36" fill="#fff" stroke="#999" stroke-width="2"/>
+                <path d="M104 170 h40 M104 178 h40 M104 186 h28" stroke="#bbb" stroke-width="2"/></g>
+              <circle cx="46" cy="182" r="9" fill="#f3d2b0" stroke="#4a2c2a" stroke-width="3"/><circle cx="126" cy="190" r="9" fill="#f3d2b0" stroke="#4a2c2a" stroke-width="3"/>
+            </g>
+            <g class="tk-up">
+              <rect x="8" y="14" width="184" height="8" rx="4" fill="#9aa3ad" stroke="#3b2321" stroke-width="2.5"/>
+              <path d="M60 132 L28 80 L32 24 M140 132 L172 80 L168 24" fill="none" stroke="#f3d2b0" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="32" cy="20" r="9" fill="#f3d2b0" stroke="#4a2c2a" stroke-width="3"/><circle cx="168" cy="20" r="9" fill="#f3d2b0" stroke="#4a2c2a" stroke-width="3"/>
+            </g>
+            <rect x="88" y="102" width="24" height="20" fill="#eac6a0"/>
+            <ellipse class="tk-face" cx="100" cy="70" rx="40" ry="46" fill="#f3d2b0" stroke="#4a2c2a" stroke-width="4"/>
+            <path d="M58 70 Q54 20 100 20 Q146 20 142 70 Q138 46 118 40 Q100 52 80 40 Q62 48 58 70Z" fill="#231a14"/>
+            <path d="M74 62 l16 4 M126 62 l-16 4" stroke="#231a14" stroke-width="4" stroke-linecap="round"/>
+            <ellipse cx="84" cy="76" rx="4" ry="4.5" fill="#231a14"/><ellipse cx="116" cy="76" rx="4" ry="4.5" fill="#231a14"/>
+            <path d="M88 98 q12 -8 24 0" fill="none" stroke="#4a2c2a" stroke-width="3.5" stroke-linecap="round"/>
+            <text class="tk-rage" x="146" y="40" font-size="30">💢</text>
+          </svg>
+          <svg class="g-shimipeni" viewBox="0 0 200 250" aria-hidden="true">
+            <rect x="68" y="196" width="26" height="54" rx="8" fill="#e8e2d6"/><rect x="106" y="196" width="26" height="54" rx="8" fill="#e8e2d6"/>
+            <path d="M52 126 Q100 106 148 126 L152 200 L48 200 Z" fill="#fbfbfb" stroke="#4a2c2a" stroke-width="4"/>
+            <path d="M60 132 L48 176" stroke="#f1cfae" stroke-width="20" stroke-linecap="round"/>
+            <path d="M140 132 L150 160 L126 170" fill="none" stroke="#f1cfae" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="140" y="150" width="14" height="8" rx="2" fill="#22b8cf" transform="rotate(-20 147 154)"/>
+            <rect x="106" y="146" width="28" height="44" rx="6" fill="#f97316" stroke="#4a2c2a" stroke-width="3" transform="rotate(-12 120 168)"/>
+            <circle cx="48" cy="180" r="9" fill="#f1cfae" stroke="#4a2c2a" stroke-width="3"/>
+            <rect x="88" y="102" width="24" height="20" fill="#e8c29c"/>
+            <ellipse cx="100" cy="70" rx="40" ry="44" fill="#f4d4b2" stroke="#4a2c2a" stroke-width="4"/>
+            <path d="M58 66 L62 30 L74 40 L80 20 L92 34 L102 16 L112 34 L124 20 L128 40 L140 30 L142 66 Q132 44 100 46 Q70 44 58 66Z" fill="#9a6b45" stroke="#6b4428" stroke-width="2"/>
+            <path d="M80 76 q5 -6 10 0 M110 76 q5 -6 10 0" fill="none" stroke="#2b1d16" stroke-width="3.5" stroke-linecap="round"/>
+            <path d="M88 92 q12 12 24 0 Z" fill="#fff" stroke="#4a2c2a" stroke-width="3" stroke-linejoin="round"/>
+          </svg>
           <svg class="g-critic" viewBox="0 0 200 250" aria-hidden="true">
             <rect x="66" y="200" width="28" height="50" rx="8" fill="#2b2f45"/><rect x="106" y="200" width="28" height="50" rx="8" fill="#2b2f45"/>
             <path d="M52 128 Q100 108 148 128 L152 206 L48 206 Z" fill="#1f2a4d" stroke="#4a2c2a" stroke-width="4"/>
@@ -635,7 +730,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
         </svg>
         <div id="clockText">20:00</div>
       </div>
-      <div id="live">LIVE</div>
+      <div id="live">LIVE<span id="viewers"></span></div>
       <div class="ov" id="steam"></div>
       <div id="collabWin"></div>
       <div class="ov" id="vignette"></div>
@@ -644,6 +739,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
       <div id="warnMarks"><span style="left:8%;top:30%">⚠️</span><span style="right:8%;top:30%">⚠️</span><span style="left:44%;top:22%">🚨</span></div>
       <div id="speech"></div>
       <div id="guestSpeech"></div>
+      <div id="gradePop"><b></b><span></span></div>
       <div id="banner"></div>
       <div id="superchat"><div class="sc-h"></div><div class="sc-b"></div></div>
       <div class="ov" id="flash"></div>
@@ -652,6 +748,14 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
   </div>
 
   <nav id="controls"></nav>
+</div>
+
+<!-- 懸垂勝負 -->
+<div id="contestLayer">
+  <div class="cTitle">💪 懸垂勝負！</div>
+  <div class="cScore">堀<b id="cMe">0</b>vs<b id="cRival">0</b>たこす先生</div>
+  <button id="pullBtn">💪 連打で懸垂！<small>タップ / 2キー / スペースキー</small></button>
+  <div id="cTimer"><i></i></div>
 </div>
 
 <!-- BAN危機 -->
@@ -769,8 +873,13 @@ const C = {
   ban:     ['スタンプ！スタンプ！！', '履いてないやん！？', 'カメラ止めろ', 'アウトアウト'],
   banSafe: ['ナイススタンプw', 'パオーン', '象さんGJ', 'セーフwww'],
   away:    ['どこ行った？', 'おーい', '無人配信で草', '帰ってこーい', '声だけ聞こえる'],
+  takosu:  ['たこす先生きた', '論争はじまったw', '医者vs堀', 'どっちも引かないw', '空気やばい'],
+  takosuRage: ['ブチギレてて草', '懸垂勝負！？', 'なんで懸垂w', '堀いけええ', '筋肉で解決'],
+  shimipeni: ['しみぺにきたああ', '水着隠したの草', 'お風呂やめとけw', 'この2人好き', 'しみぺに容赦ないw'],
   tora:    ['虎きたああ', '公開処刑で草', '希望額強気すぎ', 'エビデンスは？', 'ノーマネーの予感', '空気ピリピリ'],
   critic:  ['辛口すぎて草', 'ダメ出しえぐい', '言い返せw', 'ドラゴン容赦ない', 'MR.MODELの圧', '堀くん顔こわばってる'],
+  excellent: ['ギリギリすぎて草', '神タイミング', 'うますぎる', '職人技', '同接増えてる！'],
+  bad:     ['まだ起きてたやろ', '今じゃないw', '同接減ってて草', 'ちょっと早い'],
   massage: ['これ寝てる？', '気持ちよさそう', '起きてる起きてる', 'いや寝てるやろ', '整体うらやま', '顔が平和', 'どっち？w'],
 };
 
@@ -814,6 +923,8 @@ const Sound = {
       case 'clear':   [523, 659, 784, 1046, 784, 1046].forEach((f, i) => this.tone(f, 0.18, { type: 'triangle', vol: 0.2, delay: i * 0.12 })); break;
       case 'day':     this.tone(587, 0.12, { type: 'triangle', vol: 0.18 }); this.tone(880, 0.2, { type: 'triangle', vol: 0.18, delay: 0.12 }); break;
       case 'nap':     this.tone(392, 0.6, { vol: 0.12, to: 196 }); break;
+      case 'excellent': [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, 0.14, { type: 'triangle', vol: 0.2, delay: i * 0.06 })); break;
+      case 'pull':    this.tone(330, 0.06, { type: 'square', vol: 0.06, to: 440 }); break;
       case 'snore':   this.tone(85, 0.45, { type: 'sawtooth', vol: 0.12, to: 60 }); break;
     }
   },
@@ -907,6 +1018,7 @@ const FACE = {
   angry2:  { pose: 'stand', arms: 'down', eyes: 'open',   brow: 'angry2', mouth: 'flat' },
   angry3:  { pose: 'stand', arms: 'down', eyes: 'open',   brow: 'angry2', mouth: 'effort', sweat: 1 },
   workout: { pose: 'stand', arms: 'curl', eyes: 'open',   brow: 'angry',  mouth: 'effort', sweat: 1 },
+  pullup:  { pose: 'stand', arms: 'up',   eyes: 'open',   brow: 'angry',  mouth: 'effort', sweat: 1 },
   bath:      { pose: 'bath',  eyes: 'open',  brow: 'normal', mouth: 'flat',  cheeks: 1 },
   bathEnter: { pose: 'enter', eyes: 'happy', brow: 'normal', mouth: 'smile', cheeks: 1 },
   banBath:   { pose: 'enter', eyes: 'open',  brow: 'sleepy', mouth: 'shock', sweat: 1 },
@@ -915,7 +1027,7 @@ const FACE = {
   massageAwake: { pose: 'massage', eyes: 'open',   brow: 'sleepy', mouth: 'o' },
 };
 // 画像差し替え時に使う ASSETS.hori のキー
-const IMG_KEY = { sulky: 'normal', angry1: 'angry', angry2: 'angry', angry3: 'angry', bathEnter: 'bath', banBath: 'bath', massageAwake: 'massage' };
+const IMG_KEY = { sulky: 'normal', angry1: 'angry', angry2: 'angry', angry3: 'angry', bathEnter: 'bath', banBath: 'bath', massageAwake: 'massage', pullup: 'workout' };
 
 function chibiHead(id) {
   const eye = (x, s) => `
@@ -1018,6 +1130,12 @@ function chibiSVG() {
     <g data-k="arms:chin">
       ${limb('M60,144 L50,174 L52,200', 22)}${hand(52, 204)}
       <path class="musc" d="M46,160 q4,7 11,5"/>
+    </g>
+    <g data-k="arms:up">
+      <rect x="8" y="14" width="184" height="8" rx="4" fill="#9aa3ad" stroke="#3b2321" stroke-width="2.5"/>
+      ${limb('M60,144 L30,92 L32,26', 22)}${hand(32, 22)}
+      ${limb('M140,144 L170,92 L168,26', 22)}${hand(168, 22)}
+      <path class="musc" d="M38,100 q8,2 12,10 M162,100 q-8,2 -12,10"/>
     </g>
     <g data-k="arms:curl">
       ${limb('M60,144 L52,176', 24)}${limb('M140,144 L148,176', 24)}
@@ -1150,6 +1268,8 @@ const el = {
   flash: $('#flash'), steam: $('#steam'), warnMarks: $('#warnMarks'),
   speech: $('#speech'), banner: $('#banner'), sc: $('#superchat'), collabWin: $('#collabWin'),
   comments: $('#commentList'), controls: $('#controls'),
+  gradePop: $('#gradePop'), viewers: $('#viewers'),
+  contestLayer: $('#contestLayer'), cMe: $('#cMe'), cRival: $('#cRival'), cFill: $('#cTimer>i'),
   guest: $('#guest'), guestSpeech: $('#guestSpeech'), toraBoard: $('#toraBoard'), banSub: $('#banSub'),
   banLayer: $('#banLayer'), banFill: $('#banTimer>i'), oke: $('#okeBtn'),
   screens: { title: $('#screenTitle'), dayStart: $('#screenDay'), nap: $('#screenNap'), gameover: $('#screenOver'), clear: $('#screenClear') },
@@ -1233,6 +1353,8 @@ function setState(s) {
 
 function newGame(fromDay = 1) {
   S.day = fromDay; S.fromDay = fromDay; S.mood = CONFIG.mood.initial;
+  S.score = 0; S.viewShown = viewersOf(0); S.peakViewers = S.viewShown;
+  S.grades = { excellent: 0, great: 0, good: 0, bad: 0 };
   S.stats = { total: 0, by: Object.fromEntries(CONFIG.stimuli.map(s => [s.id, 0])) };
   el.comments.innerHTML = '';
   startDay();
@@ -1243,7 +1365,7 @@ function startDay() {
   S.intervalMult = 1; S.speedBoost = { mult: 1, left: 0 };
   S.insultStreak = 0; S.angerLeft = 0; S.angerLevel = 0;
   S.pendingEvent = null; S.ban = null; S.bathEnterLeft = 0; S.bathNaked = false;
-  S.special = null;
+  S.special = null; S.contest = null; S.banForce = false;
   S.awayLeft = 0; scheduleLeave();
   S.specialQueue = CONFIG.specialEvents.filter(e => e.day === S.day).map(ev => ({ ev, at: rand(ev.at[0], ev.at[1]) }));
   CONFIG.stimuli.forEach(s => { S.uses[s.id] = s.uses; S.cd[s.id] = 0; });
@@ -1263,6 +1385,7 @@ function startDay() {
 
 function hideOverlays() {
   el.banLayer.classList.remove('show');
+  el.contestLayer.classList.remove('show');
   el.guestSpeech.classList.remove('show');
   el.steam.className = 'ov'; el.warnMarks.style.display = 'none';
   el.collabWin.classList.remove('show');
@@ -1307,7 +1430,12 @@ function showResult(kind) {
 
 function statsText() {
   const parts = CONFIG.stimuli.map(s => `${s.name} ${S.stats.by[s.id] || 0}`).join(' / ');
-  return `使った刺激：<b>${S.stats.total}回</b><br><small>${parts}</small>`;
+  const g = S.grades;
+  const best = parseInt(storage.get(CONFIG.storageKeys.bestScore) || '0', 10);
+  if (S.score > best) storage.set(CONFIG.storageKeys.bestScore, String(S.score));
+  return `スコア：<b>${S.score}pt</b>${S.score > best ? '（自己ベスト！）' : ''}　最高同接：<b>${S.peakViewers.toLocaleString()}人</b><br>`
+    + `<small>EXCELLENT ${g.excellent} / GREAT ${g.great} / GOOD ${g.good} / BAD ${g.bad}</small><br>`
+    + `使った刺激：<b>${S.stats.total}回</b><br><small>${parts}</small>`;
 }
 function saveBest(day) {
   const best = parseInt(storage.get(CONFIG.storageKeys.bestDay) || '0', 10);
@@ -1408,15 +1536,33 @@ function useStimulus(id) {
 
   if (id === 'bath') {
     // 整体中は施術台の上なので、風呂の効果だけ入る（BAN危機・入浴演出なし）
-    S.bathNaked = !massaging() && Math.random() < CONFIG.bath.banChance;
+    S.bathNaked = !massaging() && (S.banForce || Math.random() < CONFIG.bath.banChance);
     if (S.bathNaked) { startBanCrisis(); return; } // スタンプで隠せたら風呂の効果を適用
     S.bathEnterLeft = massaging() ? 0 : CONFIG.bath.enterDuration;
   }
   applyAwake(st);
 }
 
+/* ---------- 起こすタイミングの評価・同接数 ---------- */
+const viewersOf = score => Math.max(CONFIG.score.viewers.min, Math.round(CONFIG.score.viewers.base + score * CONFIG.score.viewers.perPoint));
+function judge(success) {
+  const sc = CONFIG.score;
+  const g = success ? sc.grades.find(g => S.graceLeft / S.graceTotal <= g.maxLeft) || sc.grades[sc.grades.length - 1] : sc.bad;
+  const before = viewersOf(S.score);
+  S.score += g.points;
+  S.grades[g.id]++;
+  const diff = viewersOf(S.score) - before;
+  el.gradePop.className = g.id;
+  el.gradePop.querySelector('b').textContent = g.label;
+  el.gradePop.querySelector('span').textContent = `${g.points > 0 ? '+' : ''}${g.points}pt　👀 同接 ${diff >= 0 ? '+' : ''}${diff}`;
+  void el.gradePop.offsetWidth; el.gradePop.classList.add('go');
+  if (g.id === 'excellent') { Sound.play('excellent'); burstComments(C.excellent, 'hype', 3); }
+  if (g.id === 'bad') burstComments(C.bad, 'bad', 2);
+}
+
 function applyAwake(st) {
   const success = S.phase === 'limit';
+  judge(success);
   let dur = rand(st.awakeMin, st.awakeMax) * dayParams().awakeScale;
   if (success) {
     S.sleepy = 0;
@@ -1521,7 +1667,8 @@ function applyEvent(ev) {
 
 /* ---------- 突発イベント ---------- */
 function startSpecial(ev) {
-  S.special = { ev, left: ev.duration, lineTimer: 1.2, replyTimer: 0, last: null };
+  S.special = { ev, left: ev.duration, lineTimer: ev.startLine ? 0.6 : 1.2, replyTimer: 0, last: null, first: ev.startLine };
+  if (ev.banForce) S.banForce = true;
   showBanner(ev.banner, 2.6);
   Sound.play('event');
   burstComments(C[ev.kind], '', 2);
@@ -1542,16 +1689,73 @@ function endSpecial() {
   if (S.phase !== 'limit') say(ev.endLine, 2);
   addComment('sys', ev.endComment);
 }
+/* ---------- たこす先生の懸垂勝負（連打ミニゲーム。この間は配信の時間が止まる） ---------- */
+function startContest() {
+  const ev = S.special.ev;
+  S.contest = { left: ev.contest.duration, me: 0, rival: 0 };
+  S.phase = 'idle'; S.attackTimer = Math.max(S.attackTimer, 2); S.awakeStim = null; S.awakeLeft = 0;
+  el.guestSpeech.innerHTML = `<b>${ev.partner}</b>`; el.guestSpeech.append(ev.rageLine); el.guestSpeech.classList.add('show');
+  Voice.speak(ev.rageLine, 1.25);
+  showBanner(ev.rageBanner, 2.4);
+  el.stream.classList.add('shake'); setTimeout(() => el.stream.classList.remove('shake'), 800);
+  Sound.play('event');
+  burstComments(C.takosuRage, 'hype', 4);
+  el.cMe.textContent = 0; el.cRival.textContent = 0; el.cFill.style.width = '100%';
+  el.contestLayer.classList.add('show');
+}
+function pullRep() {
+  if (!S.contest) return;
+  S.contest.me++;
+  el.cMe.textContent = S.contest.me;
+  Sound.play('pull');
+  hop(el.horiWrap.firstElementChild);
+}
+function hop(node) { if (!node) return; node.classList.remove('hop'); void node.getBoundingClientRect(); node.classList.add('hop'); }
+function updateContest(dt) {
+  const c = S.contest, cf = S.special.ev.contest;
+  c.left -= dt;
+  const prev = Math.floor(c.rival);
+  c.rival += cf.rivalRate * dt * rand(0.6, 1.4);
+  if (Math.floor(c.rival) > prev) { el.cRival.textContent = Math.floor(c.rival); hop(el.guest); }
+  el.cFill.style.width = clamp(c.left / cf.duration, 0, 1) * 100 + '%';
+  if (S.speechLeft > 0 && (S.speechLeft -= dt) <= 0) el.speech.className = '';
+  if (c.left <= 0) finishContest();
+}
+function finishContest() {
+  const ev = S.special.ev, cf = ev.contest, c = S.contest;
+  const win = c.me >= Math.floor(c.rival);
+  S.contest = null;
+  el.contestLayer.classList.remove('show');
+  addComment('sys', `── 懸垂勝負 ${c.me} vs ${Math.floor(c.rival)}：${win ? '堀の勝ち！' : '堀の負け…'} ──`);
+  if (win) {
+    S.mood = clamp(S.mood + cf.winMood, 0, 100);
+    S.sleepy = 0; S.phase = 'awake'; S.awakeStim = 'workout'; S.awakeLeft = cf.winAwake;
+    burstComments(C.success, 'hype', 3); flash(); Sound.play('clear');
+  } else {
+    S.mood = clamp(S.mood + cf.loseMood, 0, 100);
+    S.phase = 'rising'; addSleepy(cf.loseSleepy);
+    burstComments(C.sleepy, 'bad', 3); Sound.play('flying');
+  }
+  const line = win ? ev.winLine : ev.loseLine;
+  el.guestSpeech.innerHTML = `<b>${ev.partner}</b>`; el.guestSpeech.append(line); el.guestSpeech.classList.add('show');
+  Voice.speak(line, 1.25);
+  const ref = S.special;
+  setTimeout(() => { if (S.special === ref) { ev.endLine = win ? ev.winHori : 'マイクロスリープである'; endSpecial(); } }, 1600);
+  S.special.left = 99; // 締めのセリフが終わるまで待つ
+}
+
 // 虎・ダメ出し：相手がしゃべり、少しあとに堀が言い返す
 function specialTalk(dt) {
   const sp = S.special, ev = sp.ev;
+  if (ev.contest && sp.left > 50) return; // 懸垂勝負のあとは締めのセリフだけ
   if (sp.replyTimer > 0 && (sp.replyTimer -= dt) <= 0 && S.phase !== 'limit' && S.phase !== 'rising') {
     say(pick(ev.horiLines), 1.8, ev.kind === 'critic' ? 2 : 0);
   }
   if (sp.guestLeft > 0 && (sp.guestLeft -= dt) <= 0) el.guestSpeech.classList.remove('show');
   if ((sp.lineTimer -= dt) > 0) return;
   sp.lineTimer = ev.lineInterval;
-  let line = pick(ev.partnerLines);
+  let line = sp.first || pick(ev.partnerLines);
+  sp.first = null;
   if (line === sp.last) line = pick(ev.partnerLines);
   sp.last = line;
   el.guestSpeech.innerHTML = `<b>${ev.partner}</b>`;
@@ -1612,6 +1816,7 @@ function ambientComment() {
 function currentExpr() {
   if (S.ban) return { expr: 'banBath', ban: true, trunks: false, censor: 'steam', props: ['⁉️', ''] };
   if (massaging()) return { expr: S.phase === 'awake' ? 'massageAwake' : 'massage', props: ['', ''] };
+  if (S.contest) return { expr: 'pullup', props: ['🔥', ''] };
   if (S.phase === 'limit') return { expr: 'limit', props: ['💤', ''] };
   if (S.angerLeft > 0 && S.angerLevel > 0) return { expr: 'angry' + S.angerLevel, props: [S.angerLevel >= 2 ? '💢💢' : '💢', ''] };
   if (S.phase === 'awake') {
@@ -1663,6 +1868,7 @@ function update(dt) {
     if (S.ban.left <= 0) gameOver('ban');
     return;
   }
+  if (S.contest) { updateContest(dt); return; }
 
   S.t += dt;
   if (S.t >= CONFIG.dayLength) { S.t = CONFIG.dayLength; endDay(); return; }
@@ -1670,7 +1876,8 @@ function update(dt) {
   if (S.speedBoost.left > 0) { S.speedBoost.left -= dt; if (S.speedBoost.left <= 0) S.speedBoost.mult = 1; }
   // 突発イベント
   if (!S.special && S.specialQueue.length && S.t >= S.specialQueue[0].at) startSpecial(S.specialQueue.shift().ev);
-  if (S.special && (S.special.left -= dt) <= 0) endSpecial();
+  if (S.special && (S.special.left -= dt) <= 0) { if (S.special.ev.contest) startContest(); else endSpecial(); }
+  if (S.contest) return;
   const lv = look().leave;
   if (lv && !S.special) {
     if (S.awayLeft > 0) { if ((S.awayLeft -= dt) <= 0) { scheduleLeave(); say(pick(LINES.back), 1.2); } }
@@ -1751,6 +1958,14 @@ function render() {
   renderSky(p);
   el.clock.classList.toggle('spurt', S.state === 'playing' && CONFIG.dayLength - S.t <= CONFIG.inDay.lastSpurt);
   el.moodFill.style.width = S.mood + '%';
+  if (S.score !== undefined) {
+    const target = viewersOf(S.score);
+    const d = target - S.viewShown;
+    S.viewShown += Math.abs(d) < 1 ? d : d * 0.08;
+    S.peakViewers = Math.max(S.peakViewers, Math.round(S.viewShown));
+    el.viewers.textContent = `👀 ${Math.round(S.viewShown).toLocaleString()}人`;
+    el.viewers.className = Math.abs(d) < 1 ? '' : d > 0 ? 'up' : 'down';
+  }
   el.moodVal.textContent = Math.round(S.mood);
   const fatigue = (S.day / CONFIG.totalDays) * 100 * (S.intervalMult > 1 ? 0.85 : 1);
   el.fatFill.style.width = fatigue + '%';
@@ -1789,6 +2004,8 @@ function render() {
   const pose = FACE[ex.expr].pose;
   const gk = S.special && !massaging() && playingLike && pose === 'stand' ? S.special.ev.kind : '';
   el.guest.dataset.kind = gk; el.guest.classList.toggle('show', !!gk);
+  el.guest.classList.toggle('pull', !!S.contest);
+  el.guest.classList.toggle('angry', !!S.contest || (gk === 'takosu' && S.special.left > 50));
   el.stream.classList.toggle('withGuest', !!gk);
   el.stage.dataset.scene = pose === 'bath' || pose === 'enter' ? 'bath' : pose === 'massage' ? 'massage' : gk === 'tora' ? 'tora' : (lk.room || 'kitchen');
   const props = lk.noZzz ? ex.props.map(x => (x === '💤' ? '' : x)) : ex.props;
@@ -1814,6 +2031,7 @@ const toTitle = () => { setState('title'); $('#bestText').textContent = bestText
 $('#toTitleBtn').addEventListener('click', toTitle);
 $('#toTitleBtn2').addEventListener('click', toTitle);
 el.oke.addEventListener('pointerdown', e => { e.preventDefault(); hideOke(); });
+$('#pullBtn').addEventListener('pointerdown', e => { e.preventDefault(); pullRep(); });
 el.mute.addEventListener('click', () => {
   Sound.muted = !Sound.muted; Sound.unlock();
   storage.set(CONFIG.storageKeys.muted, Sound.muted ? '1' : '0');
@@ -1823,6 +2041,7 @@ el.mute.addEventListener('click', () => {
 el.mute.textContent = Sound.muted ? '🔇' : '🔊';
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
+  if (S.contest && (e.key === '2' || e.code === 'Space')) { e.preventDefault(); pullRep(); return; }
   const st = CONFIG.stimuli.find(s => s.key === e.key);
   if (st) { Sound.unlock(); useStimulus(st.id); return; }
   if (e.code === 'Space') {
