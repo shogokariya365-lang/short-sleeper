@@ -80,7 +80,7 @@ const CONFIG = {
       { id: 'kuiya', weight: 3, banner: '❓ 謎のスパチャ「クイヤ」が届いた！',
         sc: '最近家の外にクイヤが大量発生し夏だな～と感じます',
         hori: ['あーあー、クイヤか', 'なんかね、穴掘ったりするやつでしたっけ', '千葉とかに住んでた時にそういうのあった気がする'],
-        awake: 7, mood: 0, bonus: 200, bonusLabel: '🔥 存在しない動物を知ったかぶり…切り抜かれてバズった！' },
+        awake: 7, mood: 0, bonus: 2000, bonusLabel: '🔥 存在しない動物を知ったかぶり…切り抜かれてバズった！' },
       { id: 'yupis', weight: 2, banner: '👩‍💼 堀の将来の彼女・霞ヶ浦OLユーピスが登場！', guest: '霞ヶ浦OLユーピス', icon: '👩‍💼', sub: '堀の将来の彼女',
         lines: ['堀さ〜ん、来ちゃった♡'], hori: [], awake: 3, mood: 0,
         // 確率 goodChance でいいこと、それ以外は悪いことが起きる
@@ -2219,7 +2219,7 @@ function render() {
   });
 
   // 配信画面の演出
-  const hideSleep = massaging(); // マッサージ中は眠さを画面に出さない
+  const hideSleep = massaging() || !!S.ban; // マッサージ中・BAN危機中は眠さの演出（まぶた・暗さ・ぼかし）を出さない
   const limit = S.phase === 'limit' && playingLike && !hideSleep;
   const sl = playingLike && !hideSleep ? S.sleepy : 0;
   const ef = CONFIG.effects;
@@ -2230,7 +2230,7 @@ function render() {
   el.stage.style.filter = blur > 0 ? `blur(${blur.toFixed(2)}px)` : '';
   el.stage.classList.toggle('sway', sl >= ef.swayStart && cue >= 1);
   el.horiWrap.classList.toggle('gone', S.awayLeft > 0 && playingLike);
-  const lidH = limit ? 8 + 42 * (1 - clamp(S.graceLeft / S.graceTotal, 0, 1)) : 0;
+  const lidH = limit && !S.ban ? 8 + 42 * (1 - clamp(S.graceLeft / S.graceTotal, 0, 1)) : 0;
   el.lidTop.style.height = el.lidBot.style.height = lidH + '%';
   el.futon.classList.toggle('show', S.futonLeft > 0);
   if (!S.ban) el.steam.className = 'ov' + (S.phase === 'awake' && S.awakeStim === 'bath' && !massaging() ? ' on' : '');
@@ -2246,7 +2246,7 @@ function render() {
   el.stage.dataset.scene = pose === 'bath' || pose === 'enter' ? 'bath' : pose === 'massage' ? 'massage' : gk === 'tora' ? 'tora' : (lk.room || 'kitchen');
   const props = lk.noZzz ? ex.props.map(x => (x === '💤' ? '' : x)) : ex.props;
   hori.set({ expr: ex.expr, day: S.day, lid: lidAmount(ex.expr), ban: !!ex.ban, trunks: ex.trunks !== false, censor: ex.censor || '', floatStamp: !!ex.floatStamp, shirtless: S.shirtless, noChair: S.awayLeft > 0, bandaged: S.bandaged, props });
-  el.blackout.classList.toggle('on', S.blackout > 0 && playingLike);
+  el.blackout.classList.toggle('on', S.blackout > 0 && playingLike && !S.ban);
   el.invBadge.classList.toggle('show', S.invincible > 0 && playingLike);
   if (S.invincible > 0) el.invBadge.textContent = `⭐ 無敵 ${Math.ceil(S.invincible)}`;
   el.emptyChair.classList.toggle('show', !!lk.eggChair && S.awayLeft > 0 && playingLike);
