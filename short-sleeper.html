@@ -12,7 +12,7 @@ const CONFIG = {
   totalDays: 7,
   dayLength: 60,            // 1日の配信時間（秒）
   dayStartDuration: 2.8,    // 「Day N 配信開始！」演出の長さ（秒）
-  napDuration: 2.6,         // 仮眠演出の長さ（秒）
+  napDuration: 1.2,         // 1日の終わりの画面で「次の日へ」ボタンが出るまでの秒数（連打で読み飛ばさないように）
   napFirstAttackBonus: 2.0, // 仮眠の回復分：翌日の最初の発作が来るまでの時間に足す秒数（全回復はしない）
 
   // 画面上の時計：1日の60秒を、配信開始〜終了の時刻に割り当てる（24時をまたいでOK）
@@ -111,6 +111,7 @@ const CONFIG = {
       { id: 'good',      label: 'GOOD',        maxLeft: 1.0,  points: 50 },
     ],
     bad: { id: 'bad', label: 'BAD…', points: -100 },
+    badLimit: 2, // 1日にこの回数BADを出すと回線落ちでゲームオーバー
     viewers: { base: 1200, perPoint: 3, min: 30 },
   },
 
@@ -563,7 +564,16 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 #dayHori{width:min(52vw,220px);aspect-ratio:200/250}
 #dayKumaNote{color:#c4b5fd;font-weight:700;font-size:14px;min-height:1.4em;white-space:pre-line;line-height:1.7}
 #screenNap{background:#05040a}
-#screenNap .zzz{font-size:46px;animation:zzz 1.2s ease-in-out infinite}
+#screenNap .zzz{display:inline-block;animation:zzz 1.2s ease-in-out infinite}
+#screenNap,#screenClear{justify-content:flex-start;overflow-y:auto;padding-top:max(24px,env(safe-area-inset-top))}
+.recap{width:min(100%,460px);display:flex;flex-direction:column;gap:8px;text-align:left}
+.napStats{background:var(--panel);border-radius:12px;padding:8px 14px;font-size:14px;line-height:1.7;text-align:center}
+.napStats b{font-size:18px;color:var(--warn)}
+.napClip{background:#fff;color:#111;border-radius:10px;padding:8px 12px;font-weight:900;font-size:15px;line-height:1.4;border-left:6px solid #e11d48}
+.napClip small{display:block;font-size:11px;color:#e11d48;font-weight:800}
+.napComments{list-style:none;margin:0;padding:8px 12px;background:var(--panel);border-radius:12px;font-size:14px;line-height:1.9}
+.napComments span{color:var(--sub);font-size:12px;margin-right:8px}
+.napHori{background:#fff8e1;color:#3b2321;border-radius:14px;padding:8px 14px;font-weight:900;font-size:15px;text-align:center}
 @keyframes zzz{50%{transform:translateY(-8px);opacity:.6}}
 #napBar{width:min(70vw,300px);height:8px;background:#ffffff1a;border-radius:4px;overflow:hidden}
 #napBar i{display:block;height:100%;width:0;background:#7c6cf0}
@@ -867,10 +877,10 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
 
 <!-- 仮眠 -->
 <section class="screen" id="screenNap">
-  <div class="zzz">💤</div>
-  <h2>朝6時、配信終了。<br>30分だけ睡眠…zzz</h2>
-  <p>疲労が少しだけ回復した（全回復はしない）</p>
-  <div id="napBar"><i></i></div>
+  <h2 id="napTitle">配信終了！</h2>
+  <div class="recap" id="napRecap"></div>
+  <p><span class="zzz">💤</span> 朝6時。30分だけ睡眠…（疲労は少しだけ回復）</p>
+  <button class="btn" id="nextDayBtn">次の日へ ▶</button>
 </section>
 
 <!-- ゲームオーバー -->
@@ -887,6 +897,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;touch-action:manipulatio
   <div style="font-size:56px">🎉</div>
   <h1>7日間 配信完走！！</h1>
   <p>ショートスリーパー（自称）堀 大好き、1週間の連続配信をやりきった！<br>…さすがに今日は寝てください。</p>
+  <div class="recap" id="clearRecap"></div>
   <div class="result" id="clearResult"></div>
   <button class="btn" id="retryBtn2">もう一度</button>
   <button class="btn sub" id="toTitleBtn2">タイトルへ</button>
@@ -1461,6 +1472,8 @@ function startDay() {
   S.insultStreak = 0; S.angerLeft = 0; S.angerLevel = 0;
   S.pendingEvent = null; S.ban = null; S.bathEnterLeft = 0; S.bathNaked = false;
   S.special = null; S.contest = null; S.banForce = false; S.lineQueue = []; S.kuiyaEv = null;
+  S.log = { grades: { excellent: 0, great: 0, good: 0, bad: 0 }, events: [], kuiya: [], banSaved: 0, insult: 0,
+    contest: null, fight: null, yupis: null, scoreStart: S.score };
   S.fight = null; S.bandaged = false; S.blackout = 0; S.invincible = 0; S.riseDayMult = 1; S.eatLeft = 0;
   S.shirtless = false; S.insultLimit = CONFIG.insult.limit;
   S.awayLeft = 0; scheduleLeave();
@@ -1493,9 +1506,94 @@ function hideOverlays() {
 
 function endDay() {
   saveCleared(S.day);
-  if (S.day >= CONFIG.totalDays) { saveBest(CONFIG.totalDays); showResult('clear'); return; }
+  const recap = dayRecap();
+  if (S.day >= CONFIG.totalDays) { saveBest(CONFIG.totalDays); showResult('clear', recap); return; }
+  $('#napTitle').textContent = `Day ${S.day} 配信終了！おつかれさまでした`;
+  $('#napRecap').innerHTML = recap;
+  $('#nextDayBtn').textContent = `Day ${S.day + 1} へ ▶`;
+  $('#nextDayBtn').style.visibility = 'hidden';
   setState('nap');
   Sound.play('nap');
+  Voice.speak(S.closing);
+}
+function nextDay() {
+  if (S.state !== 'nap' || S.stateTimer < CONFIG.napDuration) return;
+  Voice.stop();
+  S.day++; startDay();
+}
+
+/* ---------- 1日の終わりのまとめ（切り抜きタイトル・視聴者コメント） ---------- */
+const RECAP = {
+  clips: {
+    kuiya:     ['【悲報】堀、存在しない動物「クイヤ」を知ったかぶりしてしまう', '【切り抜き】「千葉に住んでた時にクイヤいた気がする」'],
+    contestW:  ['【神回】堀、医者と懸垂勝負して勝ってしまう', '【筋肉は嘘をつかない】たこす先生、懸垂で完敗'],
+    contestL:  ['【悲報】堀、懸垂勝負に負けてガチ不機嫌', '【放送事故】懸垂で負けた男、悪口スパチャ2回で即終了の危機'],
+    massage:   ['【検証】整体中の堀、寝てる？寝てない？', '【マイクロスリープ】整体師「寝てましたよね？」'],
+    tora:      ['【令和の虎】30分睡眠サプリ、ノーマネーでフィニッシュ', '【公開面接】虎に詰められて「なんで断言できる？」'],
+    critic:    ['【公開処刑】ドラゴン先生、堀を全否定', '【ダメ出し】「その髪型、何年前のセンス？」'],
+    shimipeni: ['【水着どこ】しみぺに、堀の水着を隠す', '【BAN寸前】水着を隠された男の風呂配信'],
+    fightW:    ['【ブレイキングサークル】堀、たこす先生をスウェーで完封', '【試合決定】朝からみるくるに組まれた試合、まさかの勝利'],
+    fightL:    ['【放送事故】包帯ぐるぐる巻きで配信を続ける男', '【KO】ブレイキングサークル、堀まさかの敗北'],
+    yupisG:    ['【リア充】将来の彼女にちゅーされて無敵になる堀', '【無敵】調子に乗った堀、10秒間だけ最強'],
+    yupisB:    ['【停電】真っ暗な中で配信を続ける男', '【何が起きた】ユーピス乱入→電気が消える'],
+    takoyaki:  ['【飯テロ】キレながらたこ焼きを完食する男', '【満腹】たこ焼き差し入れ、そして眠気へ'],
+    banSaved:  ['【ギリギリ】象スタンプ職人、今日もBANを防ぐ', '【セーフ】水着を履き忘れた男、象に救われる'],
+    excellent: ['【職人技】寝落ち1秒前に叩き起こす視聴者たち', '【神タイミング】EXCELLENT連発の夜'],
+    insult:    ['【悪口スパチャ】視聴者、堀をいじり倒す', '【イライラ】「あの、ナメてます？」'],
+    bad:       ['【回線】一瞬回線が怪しかった件', '【フライング】起きてる人を起こそうとする視聴者'],
+    normal:    ['【ショートスリーパー】{day}日目、今日も寝てない（自称）', '【検証】30分睡眠の男、{day}日目の朝を迎える'],
+  },
+  comments: {
+    always:    ['おつかれ〜', '今日も寝てなかった（寝てた）', '朝まで見てた俺のほうが眠い', '明日も見るわ', 'マイクロスリープ何回あった？', '30分で足りる体うらやましい', 'え、もう朝？'],
+    kuiya:     ['クイヤ見たことある人おる？', '穴掘るやつ探しに千葉行ってくる', 'クイヤで同接爆増してて草'],
+    contestW:  ['たこす先生また懸垂しにきて', '上半身裸のまま朝になった'],
+    contestL:  ['懸垂負けてからずっと機嫌悪くて草', '今日の堀こわかった'],
+    massage:   ['整体のときガチで寝てたよね？', '薄目が開いてるだけ（寝てる）'],
+    tora:      ['虎の前でナメてます？は強い', '500万集まらなくて草'],
+    critic:    ['ドラゴン先生言いすぎw', '「お前がな！」が今日のハイライト'],
+    shimipeni: ['しみぺにの水着隠しは反則', '風呂入るたびにヒヤヒヤした'],
+    fightW:    ['スウェーうますぎ', 'ブレイキングサークル本戦出て'],
+    fightL:    ['包帯の下で寝てた説', '顔見えんから寝てるか分からんかった'],
+    yupisG:    ['将来の彼女とは', '無敵時間うらやましい'],
+    yupisB:    ['停電のとき何してたの', '暗闇で起きてたかは誰にも分からない'],
+    takoyaki:  ['キレながら食べるたこ焼きうまそう', 'たこ焼き食べてから目が死んでた'],
+    banSaved:  ['象スタンプ職人に感謝', '水着は履いてくれ'],
+    excellent: ['今日の視聴者うますぎ', 'ギリギリ起こすの癖になる'],
+    bad:       ['回線大丈夫だった？', '起きてるのに起こすなw'],
+    highScore: ['同接えぐかった', '神配信', '切り抜き班が忙しい夜'],
+  },
+  closing: ['睡眠時間は自由', '寝るか寝ないかはどうでも良い', '起きた瞬間からすべてに感謝することで、不幸になることはない',
+            '自分に合う生き方は、自分で探すしかない', 'マイクロスリープである'],
+};
+function dayRecap() {
+  const L = S.log, tags = [];
+  L.kuiya.includes('kuiya') && tags.push('kuiya');
+  L.contest === true && tags.push('contestW'); L.contest === false && tags.push('contestL');
+  L.fight === true && tags.push('fightW'); L.fight === false && tags.push('fightL');
+  L.yupis === true && tags.push('yupisG'); L.yupis === false && tags.push('yupisB');
+  L.kuiya.includes('takoyaki') && tags.push('takoyaki');
+  ['massage', 'tora', 'critic', 'shimipeni'].forEach(k => L.events.includes(k) && tags.push(k));
+  L.banSaved > 0 && tags.push('banSaved');
+  L.grades.excellent >= 3 && tags.push('excellent');
+  L.insult >= 4 && tags.push('insult');
+  L.grades.bad > 0 && tags.push('bad');
+  const clipTags = tags.filter(t => RECAP.clips[t]);
+  const clip = pick(RECAP.clips[clipTags.length ? pick(clipTags.slice(0, 3)) : 'normal']).replace('{day}', S.day);
+  const pool = tags.flatMap(t => RECAP.comments[t] || []);
+  const gained = S.score - L.scoreStart;
+  if (gained >= 1500) pool.push(...RECAP.comments.highScore);
+  const picks = [];
+  while (picks.length < 4) {
+    const c = pick(pool.length && Math.random() < 0.7 ? pool : RECAP.comments.always);
+    if (!picks.includes(c)) picks.push(c);
+  }
+  S.closing = pick(RECAP.closing);
+  const g = L.grades;
+  return `<div class="napStats">今日のスコア <b>${gained >= 0 ? '+' : ''}${gained}pt</b>　👀 同接 <b>${viewersOf(S.score).toLocaleString()}人</b><br>`
+    + `<small>EXCELLENT ${g.excellent} / GREAT ${g.great} / GOOD ${g.good} / BAD ${g.bad}</small></div>`
+    + `<div class="napClip"><small>📺 今日の切り抜き</small>${clip}</div>`
+    + `<ul class="napComments">${picks.map(c => `<li><span>${pick(VIEWERS)}</span>${c}</li>`).join('')}</ul>`
+    + `<div class="napHori">堀「${S.closing}」</div>`;
 }
 
 function gameOver(reason) {
@@ -1507,8 +1605,10 @@ function gameOver(reason) {
     sleep:  ['寝落ちしました…', `Day ${S.day}、${clockLabel(progress())} に夢の中へ…`],
     insult: ['堀がキレて配信を切りました', '「もうええわ、配信終わり！」'],
     ban:    ['配信がBANされました', '⚠️ ガイドライン違反（水着を履き忘れた）'],
+    disconnect: ['回線が落ちました…', `📡 1日にBAD${CONFIG.score.badLimit}回。視聴者が離れて回線もプツン…`],
   }[reason];
   if (reason === 'insult') say(LINES.insult[3][0], 3, 3);
+  if (reason === 'disconnect') { el.stream.classList.add('shake'); setTimeout(() => el.stream.classList.remove('shake'), 600); }
   $('#overTitle').textContent = titles[0];
   $('#overResult').innerHTML = `${titles[1]}<br>到達日：<b>Day ${S.day}</b><br>${statsText()}<br>${bestText()}`;
   $('#retryBtn').textContent = S.day > 1 ? `Day ${S.day} からリトライ` : 'リトライ';
@@ -1518,8 +1618,9 @@ function gameOver(reason) {
   Sound.play('over');
 }
 
-function showResult(kind) {
+function showResult(kind, recap = '') {
   if (kind === 'clear') {
+    $('#clearRecap').innerHTML = recap;
     $('#clearResult').innerHTML = `到達日：<b>Day ${CONFIG.totalDays}（完走）</b>${S.fromDay > 1 ? `<br><small>Day ${S.fromDay} から挑戦</small>` : ''}<br>${statsText()}<br>${bestText()}`;
     setState('clear');
     Sound.play('clear');
@@ -1621,7 +1722,7 @@ function useStimulus(id) {
   if (id !== 'insult') { S.insultStreak = 0; S.angerLevel = 0; el.stream.classList.remove('shake'); }
 
   if (id === 'insult') {
-    S.insultStreak++;
+    S.insultStreak++; S.log.insult++;
     showSuperchat(pick(SC_INSULTS));
     Sound.play('insult');
     if (S.insultStreak >= S.insultLimit) { S.angerLevel = 3; gameOver('insult'); return; }
@@ -1649,13 +1750,19 @@ function judge(success) {
   const before = viewersOf(S.score);
   S.score += g.points;
   S.grades[g.id]++;
+  S.log.grades[g.id]++;
   const diff = viewersOf(S.score) - before;
   el.gradePop.className = g.id;
   el.gradePop.querySelector('b').textContent = g.label;
   el.gradePop.querySelector('span').textContent = `${g.points > 0 ? '+' : ''}${g.points}pt　👀 同接 ${diff >= 0 ? '+' : ''}${diff}`;
   void el.gradePop.offsetWidth; el.gradePop.classList.add('go');
   if (g.id === 'excellent') { Sound.play('excellent'); burstComments(C.excellent, 'hype', 3); }
-  if (g.id === 'bad') burstComments(C.bad, 'bad', 2);
+  if (g.id === 'bad') {
+    burstComments(C.bad, 'bad', 2);
+    if (S.log.grades.bad >= sc.badLimit) { gameOver('disconnect'); return true; }
+    showBanner(`📡 回線が不安定…あと${sc.badLimit - S.log.grades.bad}回BADで回線落ち！`, 2.4);
+  }
+  return false;
 }
 
 function pickWeighted(list) {
@@ -1665,7 +1772,7 @@ function pickWeighted(list) {
 }
 function applyAwake(st) {
   const success = S.phase === 'limit';
-  judge(success);
+  if (judge(success)) return; // BADが続いて回線落ち
   const kv = st.id === 'kuiya' ? (S.kuiyaEv = pickWeighted(CONFIG.kuiya.events)) : null;
   let dur = (kv ? kv.awake : rand(st.awakeMin, st.awakeMax)) * dayParams().awakeScale;
   if (success) {
@@ -1690,6 +1797,7 @@ function applyAwake(st) {
 
 /* ---------- クイヤボタンのランダムイベント ---------- */
 function startKuiya(kv) {
+  S.log.kuiya.push(kv.id);
   showBanner(kv.banner, 2.4);
   Sound.play('event');
   S.mood = clamp(S.mood + (kv.mood || 0), 0, 100);
@@ -1718,6 +1826,7 @@ function startKuiya(kv) {
 // ユーピス：いいこと（無敵）か悪いこと（停電）
 function yupisLuck(kv) {
   const good = Math.random() < kv.goodChance, o = good ? kv.good : kv.bad;
+  S.log.yupis = good;
   showBanner(o.banner, 3);
   if (good) {
     S.mood = clamp(S.mood + o.mood, 0, 100);
@@ -1783,6 +1892,7 @@ function fightHit() {
 function finishFight(win) {
   const f = S.fight.cfg;
   S.fight = null;
+  S.log.fight = win;
   el.fightLayer.classList.remove('show');
   addComment('sys', `── ブレイキングサークル：${win ? '堀の勝ち！' : '堀のKO負け…'} ──`);
   if (win) {
@@ -1832,6 +1942,7 @@ function startBanCrisis() {
 function hideOke() {
   if (!S.ban) return;
   S.ban = null;
+  S.log.banSaved++;
   S.bathEnterLeft = CONFIG.bath.enterDuration;
   el.banLayer.classList.remove('show');
   el.warnMarks.style.display = 'none';
@@ -1895,6 +2006,7 @@ function applyEvent(ev) {
 
 /* ---------- 突発イベント ---------- */
 function startSpecial(ev) {
+  S.log.events.push(ev.kind);
   S.special = { ev, left: ev.duration, lineTimer: ev.startLine ? 0.6 : 1.2, replyTimer: 0, last: null, first: ev.startLine };
   if (ev.banForce) S.banForce = true;
   showBanner(ev.banner, 2.6);
@@ -1953,6 +2065,7 @@ function finishContest() {
   const ev = S.special.ev, cf = ev.contest, c = S.contest;
   const win = c.me >= Math.floor(c.rival);
   S.contest = null;
+  S.log.contest = win;
   el.contestLayer.classList.remove('show');
   addComment('sys', `── 懸垂勝負 ${c.me} vs ${Math.floor(c.rival)}：${win ? '堀の勝ち！' : '堀の負け…'} ──`);
   if (win) {
@@ -2082,8 +2195,7 @@ function update(dt) {
   S.stateTimer += dt;
   if (S.state === 'dayStart') { if (S.stateTimer >= CONFIG.dayStartDuration) { setState('playing'); say(pick(S.mood < CONFIG.mood.low ? LINES.idleLow : LINES.idle), 2); } return; }
   if (S.state === 'nap') {
-    $('#napBar i').style.width = clamp(S.stateTimer / CONFIG.napDuration, 0, 1) * 100 + '%';
-    if (S.stateTimer >= CONFIG.napDuration) { S.day++; startDay(); }
+    if (S.stateTimer >= CONFIG.napDuration) $('#nextDayBtn').style.visibility = '';
     return;
   }
   if (S.state === 'ending') { // ゲームオーバー直前の余韻
@@ -2275,6 +2387,7 @@ const toTitle = () => { setState('title'); $('#bestText').textContent = bestText
 $('#toTitleBtn').addEventListener('click', toTitle);
 $('#toTitleBtn2').addEventListener('click', toTitle);
 el.oke.addEventListener('pointerdown', e => { e.preventDefault(); hideOke(); });
+$('#nextDayBtn').addEventListener('click', nextDay);
 $('#pullBtn').addEventListener('pointerdown', e => { e.preventDefault(); pullRep(); });
 // バトル：左右ボタン、またはスワイプでよける
 $('#fLeft').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); dodge('L'); });
@@ -2304,6 +2417,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Space') {
     e.preventDefault();
     if (S.ban) hideOke();
+    else if (S.state === 'nap') nextDay();
     else if (S.state === 'gameover') onStart(S.day);
     else if (['title', 'clear'].includes(S.state)) onStart(1);
   }
